@@ -130,7 +130,7 @@ async function offerAnswer(card, act) {
     const r = await post('/api/setting-offer', body);
     card.remove();
     if (act === 'apply') toast(r.retried ? 'Turned on. Answering again…' : 'Turned on');
-    if (kind === 'chat' && typeof chatLoad === 'function' && page === 'chat') { await chatLoad(id); }
+    if (kind === 'chat' && typeof chatLoad === 'function' && typeof chatVisible === 'function' && chatVisible()) { await chatLoad(id); }
     if (kind === 'project' && typeof pjFetch === 'function' && page === 'project') pjFetch(true);
   } catch (e) { toast(e.message); card.querySelectorAll('button').forEach((b) => { b.disabled = false; }); }
 }

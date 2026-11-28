@@ -152,6 +152,8 @@ let page = 'new', pageArg = null;
 // paneTask is a task shown inside the project's Threads pane (#/projects/<id>/tasks/<task>,
 // wide screens only). The task view code asks onTask() and curTask() instead of page/pageArg.
 let paneTask = null;
+// paneChat is the conversation chosen in the address of a project page (#/projects/<id>/chats/<chat>; 'new' is an empty one).
+let paneChat = null;
 const onTask = () => page === 'task' || (page === 'project' && !!paneTask);
 const curTask = () => (page === 'task' ? pageArg : page === 'project' ? paneTask : null);
 function route() {
@@ -163,8 +165,11 @@ function route() {
   const pm = page === 'project' && location.hash.match(/^#\/projects\/[\w-]+\/tasks\/([\w-]+)/);
   if (pm && !matchMedia('(min-width: 1100px)').matches) { location.replace('#/tasks/' + pm[1]); return; } // too narrow for a pane: the task's own page
   paneTask = pm ? pm[1] : null;
+  const pc = page === 'project' && location.hash.match(/^#\/projects\/[\w-]+\/chats\/([\w-]+)/);
+  paneChat = pc ? pc[1] : null;
   document.querySelectorAll('[data-page]').forEach((el) => el.classList.toggle('hidden', el.dataset.page !== page));
   if (typeof pjPlaceTask === 'function') pjPlaceTask();
+  if (typeof pjPlaceChat === 'function') pjPlaceChat();
   document.querySelectorAll('.side-nav a, .side-projects').forEach((a) => a.classList.toggle('active', a.dataset.tab === (page === 'project' ? 'projects' : page)));
   document.querySelector('.page-plain').classList.toggle('hidden', !['scheduled', 'projects', 'stash', 'nodes', 'models', 'spending', 'settings'].includes(page));
   document.title = page === 'task' ? 'Outpost' : 'Outpost · ' + ({ new: 'New task', image: 'New image', cad: 'New 3D model' }[page] || page[0].toUpperCase() + page.slice(1));
@@ -292,7 +297,7 @@ function renderAll() {
   if (page === 'projects' || page === 'project') renderProjects();
   if (page === 'scheduled') renderScheduled();
   if (page === 'stash') stashTick();
-  if (page === 'chat' && document.activeElement !== $('chat-node')) fillChatNodes();
+  if (chatVisible() && document.activeElement !== $('chat-node')) fillChatNodes();
   if (page === 'nodes') { renderNodes(); renderUpdates(); renderJobs(); }
   if (page === 'models') renderModels();
   if (page === 'spending' && Date.now() - spendAt > 10000) loadSpending();

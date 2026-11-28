@@ -414,7 +414,7 @@ something in them is waiting on you; the pin is stored on the controller, so it 
 - **Planner web search.** The Settings → Tasks → Planner box "Let the planner search the web" works with a Claude or
   OpenRouter planner (Claude's search tool, about $0.01 per search; OpenRouter's web plugin, about $0.004 per result).
   Either way the cost counts against the task cap. Local planners cannot search.
-- **The middle is the project conversation.** Ask about the project or describe work: the project's
+- **The middle is a project conversation**, the same view as the Chat page (answers stream in, thinking is folded, images and documents attach with ＋, **Run code**, versions with Edit and Regenerate, research, notes and sources). It is a chat of the project, so it also gets the project's text and file tools. A project can have **several conversations**: they are listed in the Threads pane under **Conversations**, newest first, with **＋ New conversation**; the conversation on screen is in the address (`#/projects/<id>/chats/<chat>`) and the project's own address opens the most recent one. A conversation's **⋯** (in the pane or at the top of the conversation) renames it, deletes it, moves it to another project or takes it out of the project into Chat. Ask about the project or describe work: the project's
   planner (its own, chosen in the project's **Settings**, else the default planner in Settings → Tasks; Claude, OpenRouter or a node's model) answers
   with what it can see (the project's tasks and their results, the file list, the instructions) and
   starts tasks for work you ask for, at most 3 per answer. Each task it starts appears under its answer
@@ -455,14 +455,14 @@ something in them is waiting on you; the pin is stored on the controller, so it 
   it finishes. **Untested:** real local models choosing when to research, and research on the real
   cluster (tested on the e2e rig with a stub model).
   With a paid planner every tool round is a separate call, so an answer that
-  reads files costs a few times more. **Ask** (Enter; Shift+Enter adds a line) talks it over with the planner. **Start as task** skips the conversation and starts your message
-  as a task at once; **More options…** opens the full new-task form with the project chosen. Tasks
-  started elsewhere (the New task page, a schedule) show up in time order with their request.
+  reads files costs a few times more. The switch beside ＋ chooses what **Send** does: **Ask** (Enter; Shift+Enter adds a line, or Ctrl+Enter by the Chat send-key setting) talks it over with the model picked in the box beside it, by default **Project planner** (the project's planner, which may be Claude or OpenRouter) or any loaded model; **Task** skips the conversation and starts your message
+  as a task at once (the button says **Start task**; **More options…** opens the full new-task form with the project chosen); **Research** searches the web across nodes and saves the report to the project's Stash. Tasks
+  started elsewhere (the New task page, a schedule) are in the Threads pane.
   With Claude or OpenRouter each answer is one or more small paid calls, on the Spending page as
   "*project* · project chat"; an answer that would pass the monthly cap or cost more than the
   default task cap is refused with a note. A node planner waits for a free slot on its node.
-  **Stop** cancels an answer in progress; **⚙ → Clear conversation** empties it (tasks are kept).
-  The conversation is kept in the project folder on the controller and is deleted with the project.
+  **Stop** cancels an answer in progress; **⚙ → Clear conversation** empties the first conversation, or deletes the one on screen when it is another (tasks are kept).
+  Conversations are kept with the chats on the controller (`chats/`) and are deleted with the project. **Make this a task…** in a conversation's menu opens the new-task form with the project chosen and the conversation as the request.
 - **Threads** (top bar; the amber number is how many tasks wait on you) opens a panel on the right.
   At the top is a scrolling row of **Artifacts**: screenshots, build outputs, each finished task's
   **Result files**, files and folders you uploaded, the last pull request and the documents in the

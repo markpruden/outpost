@@ -7,7 +7,7 @@ One entry point, `sh testing/run_all.sh`:
 | --- | --- |
 | `sh testing/run_all.sh` (or `fast`) | A `gofmt` check, `go vet`, all unit tests, `node --check` on every `web/*.js`, and a build for all five platforms. |
 | `sh testing/run_all.sh race` | Unit tests with the race detector (needs gcc). |
-| `sh testing/run_all.sh e2e` | Starts the local rig, runs the browser scripts below (`groups`, `steer`, `edit`, `rerun`, `taskmenu`, `projmenu`, `mobile`, `dropzone`, `projectnew`, `chatpage`, `sendkey`, `keepsel`), stops the rig. Needs Python Playwright; it stops with an error if that is missing instead of skipping. `E2E_FULL=1` adds `flow.py` (about 4 minutes) and `soak.py`. |
+| `sh testing/run_all.sh e2e` | Starts the local rig, runs the browser scripts below (`groups`, `steer`, `edit`, `rerun`, `taskmenu`, `projmenu`, `mobile`, `dropzone`, `projectnew`, `chatpage`, `chatsidebar`, `sendkey`, `keepsel`), stops the rig. Needs Python Playwright; it stops with an error if that is missing instead of skipping. `E2E_FULL=1` adds `flow.py` (about 4 minutes) and `soak.py`. |
 | `sh testing/run_all.sh all` | `fast`, then `race`, then `e2e`. |
 
 CI runs `fast` and `race` on every pull request. `e2e` is run by hand (the nightly soak workflow runs `soak.py`).
@@ -51,7 +51,8 @@ Then, with `OUTPOST_E2E_DIR=$PWD/testing/e2e/run`:
 | `panelresize.py` | Project Threads pane: Artifacts row with Stash documents, folding groups (kept after reload), dragging the left edge (clamped, remembered, keyboard, double-click reset), the same edge on the Chat page's chats list, no edge in the narrow overlay or on a phone; `before` only takes screenshots. Shots in `run/shots/panelresize/`. |
 | `projectnew.py` | Projects page: "New task in this project" in a card's menu opens the new-task page with that project picked. |
 | `chatthink.py` | Chat thinking behind a fold (closed by default, stays open when opened, kept after reload), the green working bar, and an answer cut at the length limit carried on automatically. |
-| `chatpage.py` | Chat page layout: model cards on a new chat, the docked composer, the chats panel and the phone sheet. |
+| `chatpage.py` | Chat page layout: model cards on a new chat, the docked composer, chats listed in the left sidebar (no right-hand panel) and the phone drawer. |
+| `chatsidebar.py` | Chats in the left sidebar; a chat moves into a project and back from its ⋯ menu; two conversations in a project and switching between them; the Ask \| Task \| Research switch starts a task and its card shows under the message (light, dark, phone). |
 | `embeddings.py` | `/v1/embeddings` through the real controller and a node running the stub llama-server (the model file is pushed, the embedding server starts, vectors come back unit length and similar texts are closer), base64 format, `/v1/models` listing, and the Embedding tags on the Models page (dark and phone). |
 | `stash.py` | The Stash: make a stash, drop files and paste text, search it (marked words, passage view), change passage size, search from a chat (＋ menu, chip, cited Sources, folded "Searched" line, nothing relevant), no stash data on the node, a project's own stash (Stash button, hidden from the list, removed with the project), delete; desktop dark and light and phone. |
 | `storagechats.py` | Settings → Storage: chat parts in the bar, Chats by size, clearing a chat's code files, deleting a chat; desktop dark and light and phone. |

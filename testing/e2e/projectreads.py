@@ -41,8 +41,8 @@ async def main():
             await pg.wait_for_selector("#side-tasks"); await pg.wait_for_timeout(1000)
             await pg.goto(U + "/#/projects/" + p["id"]); await pg.wait_for_timeout(1200)
             if scheme == "light":
-                await pg.fill("#pj-text", "Where is the counting done, and does it ignore case?")
-                await pg.click("#pj-go")
+                await pg.fill("#chat-text", "Where is the counting done, and does it ignore case?")
+                await pg.click("#chat-send")
             await pg.wait_for_selector(".pj-answer-text", timeout=60000); await pg.wait_for_timeout(800)
             chips = await pg.locator(".pj-read").all_inner_texts()
             assert chips == ["Listed the project", 'Searched "count_words"', "Read wordcount/core.py 1-5"], chips

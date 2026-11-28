@@ -2,60 +2,45 @@
 // Chat page. Plain script, no modules: shares globals with app.js and loads after it (see index.html).
 
 // ---------- chat (chat.go) ----------
-let chatES = null, chatCur = null, chatLive = {}, chatPickOpen = false, chatEditing = null, chatPendingInstr = null, chatPendingRun = false, chatPendingStash = [];
+let chatES = null, chatESId = '', chatCur = null, chatLive = {}, chatPickOpen = false, chatEditing = null, chatPendingInstr = null, chatPendingRun = false, chatPendingStash = [];
+// The conversation view serves two pages: the Chat page (chats with no project) and the project page, where it
+// is moved into the middle of the page (project.js pjPlaceChat). chatProject is the project id while it shows one
+// of a project's conversations; chatWant is the chat id it should show ('' is a new, empty one).
+let chatProject = '', chatWant = '';
+const chatVisible = () => page === 'chat' || (page === 'project' && !!chatProject);
+const chatShows = (id) => chatWant === id && chatVisible();
 // On a phone: Enter makes a new line (the Send button sends); Ctrl+Enter still sends from a keyboard.
 const chatTouch = () => window.matchMedia('(pointer: coarse)').matches;
+function chatReset() { chatCur = null; chatLive = {}; chatPickOpen = false; chatEditing = null; chatPendingInstr = null; chatPendingRun = false; chatPendingStash = []; }
 async function chatOpen(id) {
-  chatCur = null; chatLive = {}; chatPickOpen = false; chatEditing = null; chatPendingInstr = null; chatPendingRun = false; chatPendingStash = [];
+  chatReset(); chatProject = ''; chatWant = id || '';
   chatPlaceholder();
-  chatPanelSet(false, true);
   $('chat-title').textContent = 'New chat';
-  await chatList();
+  chatChrome();
   fillChatNodes();
   if (id) await chatLoad(id); else { chatPickRender(); chatButtons(); }
   setTimeout(() => $('chat-text').focus(), 0);
 }
-async function chatList() {
-  let list = [];
-  try { list = await api('/api/chats'); } catch (e) { /* offline */ }
-  const n = $('chat-count'); n.textContent = list.length; n.classList.toggle('hidden', !list.length);
-  const q = $('chat-find').value.trim();
-  let snips = {};
-  if (q) {
-    // Title matches as you type; message text through the same search the sidebar uses.
-    let hits = [];
-    try { hits = await api('/api/search?q=' + encodeURIComponent(q)); } catch (e) { /* offline */ }
-    if ($('chat-find').value.trim() !== q) return; // a newer search is on its way
-    (hits || []).filter((h) => h.kind === 'chat').forEach((h) => { snips[h.id] = h.snippet || ''; });
-    const words = q.toLowerCase().split(/\s+/);
-    list = list.filter((c) => c.id in snips || words.every((w) => (c.title || '').toLowerCase().includes(w)));
-  }
-  setHTML('chat-list', list.map((c) => `<a href="#/chat/${esc(c.id)}" class="${c.id === pageArg ? 'active' : ''}"><span class="cm"><span class="ct">${esc(c.title)}</span>${snips[c.id] ? `<span class="snip">${esc(snips[c.id])}</span>` : `<span class="cs">${c.messages} message${c.messages === 1 ? '' : 's'}</span>`}</span><span class="cr">${c.busy ? '<span class="dot" aria-label="answering"></span>' : esc(ago(c.updated))}</span></a>`).join(''));
-  if (!list.length) setHTML('chat-list', '');
-  const p = document.querySelector('.chat-panel > .muted');
-  const empty = q ? 'No chats match.' : 'No chats yet.';
-  if (!list.length && !p) $('chat-list').insertAdjacentHTML('beforebegin', `<p class="muted u6">${empty}</p>`);
-  else if (!list.length && p) p.textContent = empty;
-  else if (list.length && p) p.remove();
+// Open a conversation of a project (id '' is a new one): the same view, with the project's planner as the default model.
+async function chatOpenProject(pid, id) {
+  chatReset(); chatProject = pid; chatWant = id || '';
+  chatPlaceholder();
+  $('chat-title').textContent = 'New conversation';
+  pjModeSet('ask', true);
+  chatChrome();
+  fillChatNodes();
+  $('chat-node').value = 'planner';
+  if (id) await chatLoad(id); else { chatPickRender(); chatButtons(); }
 }
-let chatFindT = null;
-$('chat-find').addEventListener('input', () => { clearTimeout(chatFindT); chatFindT = setTimeout(chatList, 200); });
-// The chats panel: open by default on a wide screen (remembered), a full-screen sheet on a phone.
-const chatPhone = () => window.matchMedia('(max-width: 860px)').matches;
-function chatPanelSet(open, reset) {
-  const w = $('chat-wrap');
-  if (chatPhone()) w.classList.toggle('sheet', open);
-  else {
-    if (reset) { let v = null; try { v = localStorage.getItem('outpost-chat-panel'); } catch (e) { /* storage optional */ } open = v === 'open'; } // closed until the person opens it: the sidebar already lists the chats
-    else { try { localStorage.setItem('outpost-chat-panel', open ? 'open' : 'closed'); } catch (e) { /* storage optional */ } }
-    w.classList.toggle('closed', !open);
-    chatResizer.refresh();
-  }
-  $('chat-panel-btn').classList.toggle('on', open && !chatPhone());
-  $('chat-panel-btn').setAttribute('aria-expanded', String(open));
+// What differs between a plain chat and a project conversation in the header and composer.
+function chatChrome() {
+  const proj = !!chatProject;
+  $('chat-main').classList.toggle('in-project', proj);
+  $('pj-mode').classList.toggle('hidden', !proj);
+  $('chat-note').classList.toggle('hidden', proj);
+  setHTML('chat-new', proj ? '＋ <span class="hide-ph">New conversation</span>' : '＋ <span class="hide-ph">New chat</span>');
+  chatPlaceholder();
 }
-const chatResizer = sideResizer({ wrap: $('chat-wrap'), panel: $('chat-panel'), cssVar: '--chat-panel-w', key: 'outpost.chatPanelW', def: 300, min: 240, max: 560, label: 'Resize the list of chats' });
-function chatPanelOpen() { return chatPhone() ? $('chat-wrap').classList.contains('sheet') : !$('chat-wrap').classList.contains('closed'); }
 // Model choice: Auto (the strongest free node) or a node with a model ready.
 function chatChoices() {
   const nodes = (state ? state.nodes : []).filter((n) => n.online && n.heartbeat && n.heartbeat.loaded_model);
@@ -63,16 +48,19 @@ function chatChoices() {
   const canAnswer = nodes.length > 0 || (state ? state.nodes : []).some((n) => n.online && n.chat_switch);
   const auto = { id: 'auto', t: 'Auto (local, strongest free node)', s: 'The best free node picks up your message', tone: canAnswer ? 'on' : 'needs', note: '' };
   const research = { id: 'research', t: 'Research (across nodes)', s: 'Splits the question, searches the web on several nodes, writes a report with sources', tone: canAnswer ? 'on' : 'needs', note: 'web' };
-  return [auto, research].concat(nodes.map((n) => {
+  const lead = [auto, research];
+  if (chatProject) lead.unshift({ id: 'planner', t: pjPlannerLabel(), s: "Answers with this project's planner (Settings → Project → Planner)", tone: 'on', note: 'planner' });
+  return lead.concat(nodes.map((n) => {
     const h = n.heartbeat, busy = h.inference_busy > 0, paused = h.paused;
     return { id: n.id, t: h.loaded_model, s: nodeName(n), tone: busy || paused ? 'needs' : 'on', note: paused ? 'paused' : busy ? 'busy' : h.inference_ready === false ? 'loading' : 'local' };
   }));
 }
 // Models grouped: one entry per loaded model with the nodes that have it. A model on several nodes answers
 // from any free one ("model:<name>"); on a single node the choice is that node.
+const chatLeadCount = () => (chatProject ? 3 : 2);
 function chatModelGroups() {
   const by = new Map();
-  chatChoices().slice(2).forEach((c) => { if (!by.has(c.t)) by.set(c.t, []); by.get(c.t).push(c); });
+  chatChoices().slice(chatLeadCount()).forEach((c) => { if (!by.has(c.t)) by.set(c.t, []); by.get(c.t).push(c); });
   return [...by].map(([name, nodes]) => {
     const free = nodes.filter((c) => c.tone === 'on' && c.note !== 'loading').length;
     return { name, nodes, free, id: nodes.length > 1 ? 'model:' + name : nodes[0].id };
@@ -80,29 +68,29 @@ function chatModelGroups() {
 }
 let chatSpecific = false; // the list of specific models and nodes is open in the picker
 function fillChatNodes() {
-  const cur = $('chat-node').value || (chatCur && chatCur.node) || 'auto';
+  const cur = $('chat-node').value || (chatCur && chatCur.node) || (chatProject ? 'planner' : 'auto');
   const groups = chatModelGroups().filter((g) => g.nodes.length > 1);
-  setHTML('chat-node', chatChoices().map((c) => `<option value="${esc(c.id)}">${esc(c.id === 'auto' || c.id === 'research' ? c.t : `${c.t} on ${c.s}`)}</option>`)
+  setHTML('chat-node', chatChoices().map((c) => `<option value="${esc(c.id)}">${esc(c.id === 'auto' || c.id === 'research' || c.id === 'planner' ? c.t : `${c.t} on ${c.s}`)}</option>`)
     .concat(groups.map((g) => `<option value="${esc(g.id)}">${esc(g.name)} (any of ${g.nodes.length} nodes)</option>`)).join(''));
-  $('chat-node').value = [...$('chat-node').options].some((o) => o.value === cur) ? cur : 'auto';
-  if (!chatCur && page === 'chat') chatPickRender();
+  $('chat-node').value = [...$('chat-node').options].some((o) => o.value === cur) ? cur : (chatProject ? 'planner' : 'auto');
+  if (!chatCur && chatVisible()) chatPickRender();
 }
 // Empty state: one card per way to answer; picking one sets the model box under the composer.
 function chatPickRender() {
   if (chatCur) return;
   const sel = $('chat-node').value || 'auto', ch = chatChoices(), groups = chatModelGroups(), ready = groups.length;
   const card = (c, extra) => `<button type="button" class="mcard ${c.id === sel ? 'sel' : ''}" data-model="${esc(c.id)}" aria-pressed="${c.id === sel}"><span class="tdot ${c.tone === 'on' ? 'work' : 'needs'}"></span><span class="mt">${esc(c.t)}</span><span class="mr">${c.id === sel ? '✓ selected' : esc(c.note)}</span><span class="ms">${esc(c.s)}${extra || ''}</span></button>`;
-  const lead = ch.slice(0, 2).map((c) => card(c));
+  const lead = ch.slice(0, chatLeadCount()).map((c) => card(c));
   // Specific models and nodes live behind one link under Auto and Research, so the grid stays two cards wide.
   const opt = (id, label, note, on) => `<button type="button" class="mpick-n ${on ? 'sel' : ''}" data-model="${esc(id)}" aria-pressed="${on}">${esc(label)}${note ? `<span class="mpn-note"> · ${esc(note)}</span>` : ''}</button>`;
   const rows = groups.map((g) => {
     if (g.nodes.length === 1) { const n = g.nodes[0]; return `<div class="mpick-row"><span class="mpick-m">${esc(g.name)}</span><div class="mpick-chips">${opt(n.id, n.s, n.note !== 'local' ? n.note : '', n.id === sel)}</div></div>`; }
     return `<div class="mpick-row"><span class="mpick-m">${esc(g.name)}</span><div class="mpick-chips">${opt(g.id, 'Any free node', g.free + ' of ' + g.nodes.length + ' free', g.id === sel)}${g.nodes.map((n) => opt(n.id, n.s, n.note !== 'local' ? n.note : '', n.id === sel)).join('')}</div></div>`;
   }).join('');
-  const picked = ch.slice(2).concat(groups.filter((g) => g.nodes.length > 1).map((g) => ({ id: g.id, t: g.name, s: 'any free node' }))).find((c) => c.id === sel);
+  const picked = ch.slice(chatLeadCount()).concat(groups.filter((g) => g.nodes.length > 1).map((g) => ({ id: g.id, t: g.name, s: 'any free node' }))).find((c) => c.id === sel);
   const label = picked ? `${picked.t} · ${picked.s}` : '';
   const specific = ready ? `<div class="mpick"><button type="button" class="link-btn" data-specific="1" aria-expanded="${chatSpecific}">${picked ? `Using ${esc(label)} · change…` : 'Pick a specific model…'}</button>${chatSpecific ? `<div class="mpick-list">${rows}</div>` : ''}</div>` : '';
-  setHTML('chat-msgs', `<div class="chat-pick-h"><span>Answer with</span><span class="grow"></span><span>${ready} ${ready === 1 ? 'model' : 'models'} ready</span></div><div class="chat-pick">${lead.join('')}${specific}</div>`
+  setHTML('chat-msgs', pjEmptyHead() + `<div class="chat-pick-h"><span>Answer with</span><span class="grow"></span><span>${ready} ${ready === 1 ? 'model' : 'models'} ready</span></div><div class="chat-pick">${lead.join('')}${specific}</div>`
     + (ready ? '' : (() => {
       const first = (state ? state.nodes : []).find((n) => n.online);
       return first ? `<p class="chat-none">No model is loaded yet. <button type="button" class="small primary" data-act="best" data-id="${esc(first.id)}">Set up a model on ${esc(nodeName(first))}</button><br><span class="hint">Outpost suggests the best one that fits that machine; you confirm before anything downloads.</span></p>`
@@ -110,32 +98,44 @@ function chatPickRender() {
     })()));
 }
 async function chatLoad(id) {
-  try { chatCur = await api('/api/chats/' + id); } catch (e) { setHTML('chat-msgs', `<p class="error-msg">${esc(e.message)}</p>`); return; }
-  if (pageArg !== id) return;
-  $('chat-node').value = [...$('chat-node').options].some((o) => o.value === chatCur.node) ? chatCur.node : 'auto';
-  $('chat-title').textContent = chatCur.title || 'Chat';
+  let c;
+  try { c = await api('/api/chats/' + id); } catch (e) { if (chatShows(id)) setHTML('chat-msgs', `<p class="error-msg">${esc(e.message)}</p>`); return; }
+  if (!chatShows(id)) return;
+  chatCur = c;
+  // A project conversation that last used research goes back to the planner: Research is chosen per message there.
+  const want = chatProject && chatCur.node === 'research' ? 'planner' : chatCur.node;
+  $('chat-node').value = [...$('chat-node').options].some((o) => o.value === want) ? want : (chatProject ? 'planner' : 'auto');
+  $('chat-title').textContent = chatCur.title || (chatProject ? 'Conversation' : 'Chat');
   chatRender();
-  if (!chatES && window.EventSource) {
-    chatES = new EventSource(`/api/chats/${id}/events`);
-    chatES.onmessage = (e) => {
-      let ev; try { ev = JSON.parse(e.data); } catch (_) { return; }
-      if (ev.t === 'start') chatLive[ev.call] = { text: ev.ans != null ? ev.ans : (ev.text || ''), think: ev.think || '', t0: Date.now(), tok: ev.tok || 0, node: ev.node, tps: ev.tps || 0, read: ev.read || 0, total: ev.total || 0, left: ev.left || 0 };
-      else if (ev.t === 'end') delete chatLive[ev.call];
-      else if (ev.t === 'progress' && chatLive[ev.call]) Object.assign(chatLive[ev.call], { read: ev.read, total: ev.total, left: ev.left });
-      else if (ev.t === 'delta' && chatLive[ev.call]) {
-        const c = chatLive[ev.call];
-        if (ev.reason) { c.think = (c.think + ev.text).slice(-64000); c.tThink = c.tThink || Date.now(); }
-        else { c.text += ev.text; if (c.tThink && !c.tWrite) c.tWrite = Date.now(); }
-        c.tps = ev.tps; c.tok = ev.tok || c.tok;
-      } else if (ev.t === 'changed') { chatLoadSoon(id); return; }
-      chatRenderLive();
-    };
-  }
+  chatStream(id);
+  if (chatProject && typeof pjConvChanged === 'function') pjConvChanged(chatCur);
+}
+function chatStream(id) {
+  if (chatES && chatESId !== id) { chatES.close(); chatES = null; }
+  if (chatES || !window.EventSource) return;
+  chatESId = id;
+  chatES = new EventSource(`/api/chats/${id}/events`);
+  chatES.onmessage = (e) => {
+    let ev; try { ev = JSON.parse(e.data); } catch (_) { return; }
+    if (ev.t === 'start') chatLive[ev.call] = { text: ev.ans != null ? ev.ans : (ev.text || ''), think: ev.think || '', t0: Date.now(), tok: ev.tok || 0, node: ev.node, tps: ev.tps || 0, read: ev.read || 0, total: ev.total || 0, left: ev.left || 0 };
+    else if (ev.t === 'end') delete chatLive[ev.call];
+    else if (ev.t === 'progress' && chatLive[ev.call]) Object.assign(chatLive[ev.call], { read: ev.read, total: ev.total, left: ev.left });
+    else if (ev.t === 'delta' && chatLive[ev.call]) {
+      const c = chatLive[ev.call];
+      if (ev.reason) { c.think = (c.think + ev.text).slice(-64000); c.tThink = c.tThink || Date.now(); }
+      else { c.text += ev.text; if (c.tThink && !c.tWrite) c.tWrite = Date.now(); }
+      c.tps = ev.tps; c.tok = ev.tok || c.tok;
+    } else if (ev.t === 'changed') { chatLoadSoon(id); return; }
+    chatRenderLive();
+  };
 }
 let chatKick = null;
-function chatLoadSoon(id) { clearTimeout(chatKick); chatKick = setTimeout(() => { if (page === 'chat' && pageArg === id) { chatLoad(id); chatList(); } }, 150); }
+function chatLoadSoon(id) { clearTimeout(chatKick); chatKick = setTimeout(() => { if (chatShows(id)) { chatLoad(id); chatListChanged(); } }, 150); }
+// The sidebar lists the plain chats and the project page its conversations; both follow the pushed state or poll, so nudge them.
+function chatListChanged() { if (chatProject) { if (typeof pjConvsFetch === 'function') pjConvsFetch(); } else if (typeof refreshGroups === 'function') refreshGroups(true); }
 function chatButtons() {
   const busy = chatCur && chatCur.busy;
+  $('chat-more').classList.toggle('hidden', !chatCur);
   $('chat-stop').classList.toggle('hidden', !busy);
   $('chat-send').disabled = !!busy;
   $('chat-totask').classList.toggle('hidden', !(chatCur && chatCur.messages.some((m) => m.role === 'assistant' && m.text)));
@@ -221,13 +221,15 @@ function chatBubble(m, i, last) {
       const what = [d.pages && `${d.pages} ${d.kind === 'xlsx' ? (d.pages === 1 ? 'sheet' : 'sheets') : (d.pages === 1 ? 'page' : 'pages')}`, `${(d.words || 0).toLocaleString()} words`, d.cut && 'cut to fit'].filter(Boolean).join(' · ');
       return `<span class="doc-chip${d.warning ? ' warn' : ''}"><span aria-hidden="true">📄</span> <span class="doc-n">${esc(d.name)}</span> <span class="muted">${esc(what)}</span>${d.file ? ` <a href="${dsrc(d.file)}" target="_blank" rel="noopener">Text</a>` : ''}${d.warning ? `<span class="doc-w">${esc(d.warning)}</span>` : ''}</span>`;
     }).join('')}</div>` : '';
-    const acts = `<div class="chat-acts">${chatVer(m, busy)}<button data-edit="${esc(m.id)}" ${busy ? 'disabled' : ''} title="Change this message and answer again">✎ Edit</button><button data-copy-msg="${i}" title="Copy the text">⧉ Copy</button></div>`;
-    return `<div class="bubble-row"><div class="bubble-col"><div class="bubble">${esc(m.text)}${pics}${docs}</div>${acts}</div></div>`;
+    const started = (m.tasks || []).length; // a message that started a task (project conversations) is not answered, so it is not edited
+    const acts = `<div class="chat-acts">${chatVer(m, busy)}${started ? '' : `<button data-edit="${esc(m.id)}" ${busy ? 'disabled' : ''} title="Change this message and answer again">✎ Edit</button>`}<button data-copy-msg="${i}" title="Copy the text">⧉ Copy</button>${started ? `<span class="pj-when">started as a task</span>` : ''}</div>`;
+    return `<div class="bubble-row"><div class="bubble-col"><div class="bubble">${esc(m.text)}${pics}${docs}</div>${acts}</div></div>${chatProject ? pjTaskCards(m.tasks) : ''}`;
   }
   const meta = [m.model && `${esc(m.model)}`, m.node && `on ${esc(m.node)}`, m.tok_s && `${m.tok_s} tok/s`, chatCacheTag(m), m.note && esc(m.note), chatNeedTag(m)].filter(Boolean).join(' · ');
   const acts = `<div class="chat-acts">${chatVer(m, busy)}<button data-regen="${esc(m.id)}" ${busy ? 'disabled' : ''} title="Answer again; this answer stays as an earlier version">↻ Regenerate</button>${chatTryOn(m, busy)}${m.cut && i === chatCur.messages.length - 1 ? `<button data-continue ${busy ? 'disabled' : ''} title="The answer stopped at the length limit: ask the model to carry on">▶ Continue</button>` : ''}${m.text ? `<button data-copy-msg="${i}" title="Copy the answer">⧉ Copy</button>` : ''}${m.research && m.text ? `<button data-rs-open="${esc(m.id)}" title="Open the report in the side panel to download it or save it to a project">¶ Open report</button>` : ''}<button data-branch="${esc(m.id)}" title="Start a new chat with the conversation up to here">⑂ Branch</button>${m.text && typeof skillAnswerAct === 'function' ? skillAnswerAct(chatCur.messages, i) : ''}</div>`;
-  if (m.error) return `<div class="chat-answer">${chatRuns(m)}${researchCard(m)}<div class="error-msg">${m.error === 'stopped' ? 'Stopped.' : esc(m.error)}</div>${m.note ? `<div class="sub">${esc(m.note)}</div>` : ''}${acts}</div>`;
-  return `<div class="chat-answer">${chatRuns(m)}${researchCard(m)}${chatThinkFold(m.id, m.think_s ? `Thought for ${m.think_s} s` : 'Thinking', m.think)}${shSearched(m)}<div class="chat-text md">${md(m.text)}</div>${shSources(m)}${pvCards(pvCollect(m.text))}${meta ? `<div class="sub">${meta}</div>` : ''}${acts}${offerCard(m, { chat: chatCur.id })}${memSuggestCard(m, { chat: chatCur.id })}</div>`;
+  const pj = chatProject; // project conversations add what the planner read, the research question and where it was saved, and the tasks it started
+  if (m.error) return `<div class="chat-answer${pj ? ' pj-answer' : ''}">${chatRuns(m)}${pj ? pjResearchHead(m) : ''}${(pj && pjRsLive(m)) || researchCard(m)}<div class="error-msg">${m.error === 'stopped' ? 'Stopped.' : esc(m.error)}${pj ? pjPlannerFix(m) : ''}</div>${m.note ? `<div class="sub">${esc(m.note)}</div>` : ''}${acts}</div>${pj ? pjTaskCards(m.tasks) : ''}`;
+  return `<div class="chat-answer${pj ? ' pj-answer' : ''}">${chatRuns(m)}${pj ? pjResearchHead(m) : ''}${(pj && pjRsLive(m)) || researchCard(m)}${pj ? pjReads(m.reads) : ''}${chatThinkFold(m.id, m.think_s ? `Thought for ${m.think_s} s` : 'Thinking', m.think)}${shSearched(m)}<div class="chat-text md pj-answer-text">${pj ? pjLinkRefs(md(m.text), pjKnownFiles()) : md(m.text)}</div>${shSources(m)}${pvCards(pvCollect(m.text))}${pj ? pjResearchSaved(m) : ''}${meta ? `<div class="sub">${meta}</div>` : ''}${acts}${offerCard(m, pj ? { project: pj, chat: chatCur.id } : { chat: chatCur.id })}${memSuggestCard(m, pj ? { project: pj, chat: chatCur.id } : { chat: chatCur.id })}</div>${pj ? pjTaskCards(m.tasks) : ''}`;
 }
 function chatRender() {
   if (!chatCur) return;
@@ -238,7 +240,7 @@ function chatRender() {
     const last = chatCur.messages[chatCur.messages.length - 1];
     if (last && last.role === 'assistant' && last.think) { chatThinkOpen[last.id] = true; delete chatThinkOpen.live; }
   }
-  setHTML('chat-msgs', instr + chatCur.messages.map((m, i) => chatBubble(m, i)).join('') + '<div id="chat-live"></div>');
+  setHTML('chat-msgs', instr + (chatProject && !chatCur.messages.length ? pjEmptyHead() : '') + chatCur.messages.map((m, i) => chatBubble(m, i)).join('') + '<div id="chat-live"></div>');
   chatRenderLive();
   chatButtons();
   if (stick) box.scrollTop = box.scrollHeight;
@@ -296,16 +298,17 @@ function chatWorking(what, detail, pct) {
   return `<div class="working">${b}<span><span class="w-what">${esc(what)}</span>${detail ? ' · ' + esc(detail) : ''}</span></div>`;
 }
 $('chat-msgs').addEventListener('toggle', (e) => { const d = e.target; if (d.dataset && d.dataset.tk) chatThinkOpen[d.dataset.tk] = d.open; }, true);
-setInterval(() => { if (page === 'chat' && chatCur && chatCur.busy) chatRenderLive(); }, 1000);
+setInterval(() => { if (chatVisible() && chatCur && chatCur.busy) chatRenderLive(); }, 1000);
 function chatRenderLive() {
   const el = $('chat-live');
   if (!el || !chatCur) return;
   const calls = Object.values(chatLive);
   const rs = chatCur.research ? researchLive(chatCur.research) : '';
+  const reads = chatProject ? pjReads(chatCur.reading) : '';
   if (rs && (chatCur.research.stage !== 'writing' || !calls.length)) { setHTML('chat-live', rs); return; }
   if (chatCur.prompt) { setHTML('chat-live', chatPromptCard(chatCur.prompt)); chatPromptTick(); return; }
-  if (chatCur.busy === 'running') { setHTML('chat-live', `<div class="chat-answer">${chatWorking('Running code', 'on ' + (chatCur.run_on || 'a node'))}</div>`); return; }
-  if (!calls.length) { setHTML('chat-live', chatCur.busy === 'waiting' ? `<div class="chat-answer">${chatWorking('Waiting', 'for a free node')}</div>` : (chatCur.busy ? `<div class="chat-answer">${chatWorking('Working', '')}</div>` : '')); return; }
+  if (chatCur.busy === 'running') { setHTML('chat-live', `<div class="chat-answer">${chatWorking('Running code', 'on ' + (chatCur.run_on || 'a node'))}${reads}</div>`); return; }
+  if (!calls.length) { setHTML('chat-live', chatCur.busy === 'waiting' ? `<div class="chat-answer">${chatWorking('Waiting', 'for a free node')}${reads}</div>` : (chatCur.busy ? `<div class="chat-answer">${chatWorking(reads ? 'Reading the project' : 'Working', '')}${reads}</div>` : '')); return; }
   const c = calls[0], now = Date.now();
   const rate = liveRate(Object.assign({}, c, { text: c.text }));
   const secs = (a, b) => Math.max(1, Math.round(((b || now) - a) / 1000));
@@ -315,7 +318,7 @@ function chatRenderLive() {
   else if (c.total && c.read < c.total) bw = chatWorking('Reading your message', `${Math.round(100 * c.read / c.total)}%${c.left > 0 ? ', about ' + c.left + ' s left' : ''}`, 100 * c.read / c.total);
   else bw = chatWorking('Working', '');
   if (c.think) label = c.text ? `Thought for ${secs(c.tThink, c.tWrite)} s` : `Thinking… ${secs(c.tThink)} s`;
-  setHTML('chat-live', `${rs}<div class="chat-answer">${chatThinkFold('live', label, c.think)}${c.text ? `<div class="chat-text md">${md(offerStrip(c.text))}</div>` : ''}${bw}<div class="sub">${esc(c.node || '')}${rate ? ' · ' + esc(rate) : ''}</div></div>`);
+  setHTML('chat-live', `${rs}<div class="chat-answer">${chatThinkFold('live', label, c.think)}${c.text ? `<div class="chat-text md">${md(offerStrip(c.text))}</div>` : ''}${bw}${reads}<div class="sub">${esc(c.node || '')}${rate ? ' · ' + esc(rate) : ''}</div></div>`);
   const tb = el.querySelector('.think[open] .think-body'); if (tb) tb.scrollTop = tb.scrollHeight;
   const box = $('chat-msgs');
   if (box.scrollHeight - box.scrollTop - box.clientHeight < 120) box.scrollTop = box.scrollHeight;
@@ -323,21 +326,26 @@ function chatRenderLive() {
 async function chatSend() {
   const text = $('chat-text').value.trim(), images = chatImg.payload(), docs = chatImg.docs();
   if (!text && !images.length && !docs.length) return;
+  if (chatProject && pjMode === 'task') { await pjStartTask(text); return; } // Task: start it in the project from the text
   $('chat-send').disabled = true;
+  // Research in a project is chosen per message with the Ask | Task | Research switch.
+  const node = chatProject && pjMode === 'research' ? 'research' : $('chat-node').value;
   try {
     if (!chatCur) {
-      const body = { text, node: $('chat-node').value, images, docs };
+      const body = { text, node, images, docs };
       if (chatPendingInstr !== null) body.instructions = chatPendingInstr;
       if (chatPendingRun) body.run_code = true;
       if (chatPendingStash.length) body.stashes = chatPendingStash;
+      if (chatProject) body.project_id = chatProject;
       const r = await post('/api/chats', body);
       $('chat-text').value = ''; $('chat-text').style.height = ''; chatImg.clear();
-      location.hash = '#/chat/' + r.id;
+      location.hash = chatProject ? `#/projects/${chatProject}/chats/${r.id}` : '#/chat/' + r.id;
       return;
     }
-    await post(`/api/chats/${chatCur.id}/messages`, { text, node: $('chat-node').value, images, docs });
+    await post(`/api/chats/${chatCur.id}/messages`, { text, node, images, docs });
     $('chat-text').value = ''; $('chat-text').style.height = ''; chatImg.clear();
     await chatLoad(chatCur.id);
+    if (chatProject) chatListChanged();
   } catch (e) { toast(e.message); }
   chatButtons();
 }
@@ -354,21 +362,20 @@ const composerKeyHint = (verb) => (chatTouch() ? '' : chatCtrlSend() ? `Ctrl+Ent
 function chatSendKeySet(ctrl) {
   try { if (ctrl) localStorage.setItem('outpost.chatSendKey', 'ctrl'); else localStorage.removeItem('outpost.chatSendKey'); } catch (e) { /* storage optional */ }
   chatPlaceholder();
-  const k = document.querySelector('.pj-keys'); if (k) k.textContent = composerKeyHint('asks');
   const c = document.getElementById('set-chatkey'); if (c) c.checked = ctrl;
 }
 $('chat-text').addEventListener('keydown', (e) => {
   if (composerEnterSends(e)) { e.preventDefault(); chatSend(); }
 });
 $('chat-key').onclick = () => chatSendKeySet(!chatCtrlSend());
-{ const k = document.querySelector('.pj-keys'); if (k) k.textContent = composerKeyHint('asks'); }
-const chatNew = () => { if (location.hash === '#/chat') chatOpen(null); else location.hash = '#/chat'; };
-$('chat-new').onclick = chatNew; $('chat-new2').onclick = chatNew;
-$('chat-panel-btn').onclick = () => chatPanelSet(!chatPanelOpen());
-$('chat-panel-x').onclick = () => chatPanelSet(false);
-$('chat-node').addEventListener('change', () => { chatPickRender(); if (typeof chatImg !== 'undefined') chatImg.refresh(); });
+const chatNew = () => {
+  if (chatProject) { const h = `#/projects/${chatProject}/chats/new`; if (location.hash === h) chatOpenProject(chatProject, ''); else location.hash = h; return; }
+  if (location.hash === '#/chat') chatOpen(null); else location.hash = '#/chat';
+};
+$('chat-new').onclick = chatNew;
+$('chat-node').addEventListener('change', () => { if (chatProject) pjModeFromNode(); chatPickRender(); if (typeof chatImg !== 'undefined') chatImg.refresh(); });
 $('chat-msgs').addEventListener('click', (e) => { const sp = e.target.closest('[data-specific]'); if (sp) { chatSpecific = !chatSpecific; chatPickRender(); return; }
-  const b = e.target.closest('[data-model]'); if (b) { $('chat-node').value = b.dataset.model; chatPickOpen = false; chatPickRender(); $('chat-text').focus(); return; }
+  const b = e.target.closest('[data-model]'); if (b) { $('chat-node').value = b.dataset.model; if (chatProject) pjModeFromNode(); chatPickOpen = false; chatPickRender(); $('chat-text').focus(); return; }
   if (e.target.closest('#chat-pick-more')) { chatPickOpen = !chatPickOpen; chatPickRender(); return; }
   chatAct(e.target); });
 $('chat-msgs').addEventListener('change', (e) => {
@@ -396,7 +403,7 @@ async function chatAct(t) {
   else if ((el = b('ver')) && !el.disabled) await chatDo('version', { msg_id: el.dataset.msg, ver: Number(el.dataset.ver) });
   else if ((el = b('copy-msg'))) { const m = chatCur.messages[Number(el.dataset.copyMsg)]; if (m) { await copyText(m.text || ''); toast('Copied'); } }
   else if ((el = b('branch'))) {
-    try { const r = await post(`/api/chats/${chatCur.id}/branch`, { msg_id: el.dataset.branch }); toast('Branched into a new chat'); location.hash = '#/chat/' + r.id; } catch (e) { toast(e.message); }
+    try { const r = await post(`/api/chats/${chatCur.id}/branch`, { msg_id: el.dataset.branch }); toast('Branched into a new chat'); location.hash = chatProject ? `#/projects/${chatProject}/chats/${r.id}` : '#/chat/' + r.id; } catch (e) { toast(e.message); }
   }
   else if ((el = b('rs-open'))) {
     const m = chatCur.messages.find((x) => x.id === el.dataset.rsOpen);
@@ -405,7 +412,7 @@ async function chatAct(t) {
   else if (b('instr')) chatInstrOpen();
 }
 async function chatDo(what, body) {
-  try { await post(`/api/chats/${chatCur.id}/${what}`, body); await chatLoad(chatCur.id); chatList(); } catch (e) { toast(e.message); chatRender(); }
+  try { await post(`/api/chats/${chatCur.id}/${what}`, body); await chatLoad(chatCur.id); chatListChanged(); } catch (e) { toast(e.message); chatRender(); }
 }
 async function chatInstrOpen() {
   let val = chatCur ? chatCur.instructions || '' : chatPendingInstr;
@@ -437,12 +444,16 @@ $('chat-totask').onclick = () => {
   const lines = chatCur.messages.filter((m) => m.text).map((m) => `${m.role === 'user' ? 'Me' : 'Assistant'}: ${m.text}`);
   $('nt-prompt').value = 'Build this, based on the conversation below.\n\n' + lines.join('\n\n');
   try { ntDraft.flush && ntDraft.flush(); } catch (e) { /* draft store optional */ }
+  const pid = chatCur.project_id || ''; // a conversation of a project starts its task in that project
+  if (pid) { try { localStorage.setItem('nt-project', pid); } catch (e) { /* storage optional */ } }
   location.hash = '#/new';
-  setTimeout(() => { $('nt-prompt').value = 'Build this, based on the conversation below.\n\n' + lines.join('\n\n'); autoGrow($('nt-prompt')); }, 50);
+  setTimeout(() => { if (pid) { $('nt-project').value = pid; if (typeof renderNew === 'function') renderNew(); } $('nt-prompt').value = 'Build this, based on the conversation below.\n\n' + lines.join('\n\n'); autoGrow($('nt-prompt')); }, 50);
 };
 
 function chatPlaceholder() {
-  $('chat-text').placeholder = chatTouch() ? 'Ask anything…' : chatCtrlSend() ? 'Ask anything… (Ctrl+Enter sends, Enter adds a line)' : 'Ask anything… (Enter sends, Shift+Enter adds a line)';
+  const send = chatCtrlSend() ? 'Ctrl+Enter sends, Enter adds a line' : 'Enter sends, Shift+Enter adds a line';
+  const what = chatProject ? 'Ask about this project or describe work to do…' : 'Ask anything…';
+  $('chat-text').placeholder = chatTouch() ? what : `${what} (${send})`;
   $('chat-key').textContent = chatCtrlSend() ? 'Ctrl+Enter' : 'Enter';
   $('chat-key').title = chatCtrlSend() ? 'Ctrl+Enter sends. Click to make Enter send instead.' : 'Enter sends. Click to require Ctrl+Enter instead.';
 }

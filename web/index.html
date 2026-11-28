@@ -266,18 +266,8 @@
               <button class="small pj-tb pj-more-btn" id="pj-ctx-btn" aria-haspopup="menu" aria-expanded="false" title="Edit, pin and more" aria-label="Project actions">⋯</button>
             </div>
           </div>
-          <div class="thread pj-feed" id="pj-feed" aria-live="polite"></div>
-          <div class="dock">
-            <div class="composer">
-              <textarea id="pj-text" rows="1" placeholder="Ask about this project or describe work to do…" aria-label="Message to the project"></textarea>
-              <div class="composer-bar">
-                <a href="#/new" id="pj-more" class="composer-hint" title="The full new-task form, with this project chosen">More options…</a><span class="composer-hint pj-keys">Enter asks · Shift+Enter adds a line</span>
-                <span class="spacer"></span>
-                <button class="small" id="pj-task" title="Skip the conversation: start this message as a task now, with the project's settings">Start as task</button>
-                <button class="send" id="pj-go">Ask</button>
-              </div>
-            </div>
-          </div>
+          <div class="pj-conv" id="pj-conv"></div>
+          <div class="pj-gone" id="pj-gone"></div>
         </div>
         <aside class="pj-panel" id="pj-panel" aria-label="Threads">
           <div class="pj-panel-h">
@@ -297,14 +287,14 @@
     <!-- CHAT -->
     <section data-page="chat" class="page-chat hidden">
       <div class="chat-wrap" id="chat-wrap">
-        <div class="chat-main">
+        <div class="chat-main" id="chat-main">
           <div class="chat-top">
             <h2 class="chat-ttl" id="chat-title">New chat</h2>
             <span class="spacer"></span>
             <button class="tb hidden" id="chat-instr-btn" title="Standing instructions for this chat, such as language or answer style">✎ <span class="hide-ph">Instructions</span></button>
             <button class="tb hidden" id="chat-cmp-btn" title="Ask two nodes the same question and read the answers side by side">⇄ <span class="hide-ph">Compare</span></button>
             <button class="tb hidden" id="chat-export-btn" title="Save this chat as Markdown or text, or print it as a PDF">⤓ <span class="hide-ph">Export</span></button>
-            <button class="tb" id="chat-panel-btn" aria-expanded="true" aria-controls="chat-panel" title="Show or hide the list of chats">☰ <span class="hide-ph">Chats</span> <span class="badge hidden" id="chat-count"></span></button>
+            <button class="tb hidden" id="chat-more" aria-haspopup="menu" aria-expanded="false" title="Rename, move to a project, delete" aria-label="Chat actions">⋯</button>
             <button class="tb" id="chat-new">＋ <span class="hide-ph">New chat</span></button>
           </div>
           <div class="chat-msgs" id="chat-msgs" aria-live="polite"></div>
@@ -320,6 +310,8 @@
                   <span class="plus-wrap"><button type="button" class="tb chat-plus" id="chat-plus" aria-haspopup="menu" aria-expanded="false" title="Attach files, run code, or make an image or 3D model" aria-label="Add: attach files, run code, make an image or 3D model">＋</button><div class="plus-menu hidden" id="chat-plus-menu" role="menu"></div></span>
                   <button type="button" class="hidden" id="chat-attach" tabindex="-1" aria-hidden="true">📎</button><input type="file" id="chat-file" accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.docx,.xlsx,.odt,.csv" multiple hidden>
                   <span class="chat-chips" id="chat-chips"></span>
+                  <span class="pj-mode hidden" id="pj-mode" role="group" aria-label="What Send does"><button type="button" data-mode="ask" aria-pressed="true" title="Send to the conversation">Ask</button><button type="button" data-mode="task" aria-pressed="false" title="Start this message as a task in the project, with the project's settings">Task</button><button type="button" data-mode="research" aria-pressed="false" title="Research across nodes; the report is saved to the project's Stash">Research</button></span>
+                  <a href="#/new" class="link-btn hidden" id="pj-more" title="The full new-task form, with this project chosen">More options…</a>
                   <select id="chat-node" class="chat-pill" aria-label="Which node answers"></select>
                   <button type="button" class="hidden" id="chat-run" aria-pressed="false" tabindex="-1" aria-hidden="true">▶ Run code</button>
                   <span class="grow"></span>
@@ -329,15 +321,10 @@
                   <button class="primary" id="chat-send">Send</button>
                 </div>
               </div>
-              <p class="chat-note">Chat uses a free node only, so task work goes first; it waits up to 5 minutes for one.</p>
+              <p class="chat-note" id="chat-note">Chat uses a free node only, so task work goes first; it waits up to 5 minutes for one.</p>
             </div>
           </div>
         </div>
-        <aside class="chat-panel" id="chat-panel" aria-label="Chats">
-          <div class="chat-panel-h"><b>Chats</b><button class="small" id="chat-new2">＋ New</button><button class="tb chat-panel-x" id="chat-panel-x" aria-label="Close the list of chats">✕</button></div>
-          <input type="search" class="chat-find" id="chat-find" placeholder="Search chats" aria-label="Search chats by title and message text">
-          <nav class="chat-list" id="chat-list" aria-label="Chats"></nav>
-        </aside>
       </div>
     </section>
 

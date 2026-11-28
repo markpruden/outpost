@@ -17,21 +17,21 @@ async def main():
         pid = (await pg.evaluate(POST, ["/api/projects", {"name": "Keep selection"}]))["id"]
         await pg.evaluate(POST, ["/api/projects/" + pid + "/chat", {"text": "What is in this project? Please answer in a sentence."}])
         await pg.goto(U + "/#/projects/" + pid)
-        await pg.wait_for_selector(".pj-ask .bubble")
+        await pg.wait_for_selector("#chat-msgs .bubble")
         await pg.wait_for_timeout(1500)
         # select the bubble text, then force several refreshes with changed timestamps
-        await pg.evaluate("() => { const r = document.createRange(); r.selectNodeContents(document.querySelector('.pj-ask .bubble')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }")
+        await pg.evaluate("() => { const r = document.createRange(); r.selectNodeContents(document.querySelector('#chat-msgs .bubble')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }")
         before = await pg.evaluate("() => getSelection().toString()")
         assert before.strip(), "nothing selected"
         for _ in range(4):
-            await pg.evaluate("() => { document.querySelector('#pj-feed')._h = 'stale'; pjFetch(true); }")  # a refresh whose HTML differs
+            await pg.evaluate("() => { document.querySelector('#chat-msgs')._h = 'stale'; chatRender(); }")  # a refresh whose HTML differs
             await pg.wait_for_timeout(700)
         after = await pg.evaluate("() => getSelection().toString()")
         assert after == before, f"selection lost: {before!r} -> {after!r}"
         # clear the selection: the page catches up (the stale marker is replaced)
         await pg.evaluate("() => getSelection().removeAllRanges()")
         await pg.wait_for_timeout(600)
-        assert await pg.evaluate("() => document.querySelector('#pj-feed')._h !== 'stale'"), "page did not catch up"
+        assert await pg.evaluate("() => document.querySelector('#chat-msgs')._h !== 'stale'"), "page did not catch up"
         assert not errors, errors
         print("ok")
         await b.close()

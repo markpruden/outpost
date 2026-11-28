@@ -1,5 +1,5 @@
-# Resizable side panels: drag the left edge of the project's Threads panel and of the
-# chats list, keyboard on the focused handle, double-click to reset, the width kept
+# Resizable side panels: drag the left edge of the project's Threads panel (and, on a task page,
+# the pane), keyboard on the focused handle, double-click to reset, the width kept
 # after a reload, and no handle where the panel is an overlay (narrow screens, phone).
 # Pass "before" to only take screenshots (for a build without the handle).
 # Screenshots go to $OUTPOST_E2E_DIR/shots/panelresize/.
@@ -93,19 +93,6 @@ async def main():
             await pg.locator("#pj-panel .side-resize").dblclick()
             assert abs(await pw(pg, "#pj-panel") - 380) < 2
             assert await pg.evaluate("localStorage.getItem('outpost.pjPanelW')") is None
-            # chats list on the Chat page uses the same handle
-            await pg.goto(U + "/#/chat")
-            await pg.wait_for_selector("#chat-panel-btn")
-            if await pg.locator("#chat-wrap.closed").count():
-                await pg.click("#chat-panel-btn")
-            ch = pg.locator("#chat-panel .side-resize")
-            await ch.wait_for()
-            assert abs(await pw(pg, "#chat-panel") - 300) < 2
-            await drag(pg, ch, -150)
-            assert abs(await pw(pg, "#chat-panel") - 450) < 2, await pw(pg, "#chat-panel")
-            await ch.hover()
-            await pg.screenshot(path=OUT + f"after-chat-{scheme}.png")
-            await ch.dblclick()
             # narrower than 1100 px the Threads panel is an overlay: no handle, fixed width
             await pg.set_viewport_size({"width": 1000, "height": 800})
             await pg.goto(U + "/#/projects/" + pid); await pg.wait_for_selector("#pj-name")

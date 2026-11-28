@@ -43,10 +43,10 @@ async def main():
             if await pg.locator("#pj-tab-context.on").count():
                 await pg.click("#pj-tab-threads")
             await pg.wait_for_selector("#pj-threads .pj-row")
-            await pg.fill("#pj-text", "a draft that must survive")
+            await pg.fill("#chat-text", "a draft that must survive")
 
             # a click on the row opens the task inside the pane
-            await pg.click("#pj-threads .pj-row-main")
+            await pg.click("#pj-threads .pj-row:not(.pj-conv-row) .pj-row-main")
             await until(pg, f"location.hash === '#/projects/{pid}/tasks/{tid}'")
             await pg.wait_for_selector("#pj-panel section.page-task.in-pane #thread .card-msg, #pj-panel section.page-task.in-pane #thread > *")
             assert await pg.locator("#pj-panel #tm-text").is_visible()
@@ -55,7 +55,7 @@ async def main():
             w = await pg.evaluate("document.querySelector('#pj-panel').getBoundingClientRect().width")
             assert abs(w - 640) < 2, w
             await pg.wait_for_selector("#pj-panel [data-act=task-approve]")
-            assert await pg.input_value("#pj-text") == "a draft that must survive"
+            assert await pg.input_value("#chat-text") == "a draft that must survive"
             await pg.wait_for_timeout(500)
             await pg.screenshot(path=OUT + f"task-in-pane-{scheme}.png")
             # back to the list
@@ -63,12 +63,14 @@ async def main():
             await pg.wait_for_selector("#pj-threads .pj-row")
             assert await pg.locator("#pj-panel section.page-task").count() == 0
             assert abs(await pg.evaluate("document.querySelector('#pj-panel').getBoundingClientRect().width") - 380) < 2
-            assert await pg.input_value("#pj-text") == "a draft that must survive"
+            assert await pg.input_value("#chat-text") == "a draft that must survive"
             # a card in the conversation opens in the pane too; ↗ opens the full page
-            await pg.click("#pj-feed a[href='#/tasks/" + tid + "']")
+            tid2 = (await pg.evaluate(POST, ["/api/projects/" + pid + "/chat", {"text": "Add a README to the dice roller", "mode": "task"}]))["task"]
+            await pg.wait_for_selector("#chat-msgs a[href='#/tasks/" + tid2 + "']", timeout=15000)
+            await pg.click("#chat-msgs a[href='#/tasks/" + tid2 + "']")
             await pg.wait_for_selector("#pj-panel section.page-task.in-pane")
             await pg.click("#pj-pane-full")
-            await until(pg, f"location.hash === '#/tasks/{tid}'")
+            await until(pg, f"location.hash === '#/tasks/{tid2}'")
             await pg.wait_for_selector("section.page-task:not(.hidden):not(.in-pane) [data-act=task-approve]")
             assert await pg.evaluate("document.querySelector('section.page-task').parentElement.id") != "pj-panel"
 
@@ -130,7 +132,7 @@ async def main():
         await pg.click("#pj-threads-btn")
         if await pg.locator("#pj-tab-context.on").count():
             await pg.click("#pj-tab-threads")
-        await pg.click("#pj-threads .pj-row-main")
+        await pg.click("#pj-threads .pj-row:not(.pj-conv-row) .pj-row-main")
         await until(pg, "/^#\\/tasks\\//.test(location.hash)")
         await pg.goto(U + "/#/projects/" + first); await pg.wait_for_selector("#pj-name")
         await pg.click("#pj-threads-btn"); await pg.click("#pj-tab-context")

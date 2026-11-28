@@ -46,10 +46,10 @@ async def main():
         await pg.click(".bubble-col [aria-label='Previous version']"); await idle(pg)
         assert "RFC 3339 time and keep the zone" in await pg.inner_text("#chat-msgs"), "first version back"
         # Chats search by message text.
-        await pg.fill("#chat-find", "zone"); await pg.wait_for_timeout(900)
-        assert await pg.locator(".chat-list a").count() >= 1, "search finds the chat"
+        await pg.fill("#sf-q", "zone"); await pg.wait_for_timeout(900)
+        assert await pg.locator("#side-tasks .side-chat").count() >= 1, "the sidebar search finds the chat"
         await pg.screenshot(path=S + "search-light.png")
-        await pg.fill("#chat-find", ""); await pg.wait_for_timeout(500)
+        await pg.fill("#sf-q", ""); await pg.wait_for_timeout(500)
         # Branch.
         before = pg.url
         await pg.click("[data-branch] >> nth=0"); await pg.wait_for_timeout(1200)

@@ -34,8 +34,8 @@ async def main():
         for ctrl in (False, True):
             await pg.evaluate("(c) => c ? localStorage.setItem('outpost.chatSendKey','ctrl') : localStorage.removeItem('outpost.chatSendKey')", ctrl)
             want = [False, True] if ctrl else [True, True]
-            await pg.goto(U + "/#/projects/" + pid); await pg.reload(); await pg.wait_for_selector("#pj-text")
-            got = await tries("/chat", "#pj-text", "hello project")
+            await pg.goto(U + "/#/projects/" + pid); await pg.reload(); await pg.wait_for_selector("#chat-text")
+            got = await tries("/chat", "#chat-text", "hello project")
             assert got == want, f"project box ctrl={ctrl}: {got} != {want}"
             await pg.goto(U + "/#/chat"); await pg.reload(); await pg.wait_for_selector("#chat-text")
             # a model may not be loaded on the rig: Enter still posts the message or an error, so look for any POST under /api/chats

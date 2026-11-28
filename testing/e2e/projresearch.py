@@ -36,8 +36,8 @@ async def main():
             await pg.goto(U + "/")
             await pg.fill("#pw", pw); await pg.click("button[type=submit]")
             await pg.wait_for_selector("#side-tasks"); await pg.wait_for_timeout(800)
-            await pg.goto(U + "/#/projects/" + p["id"]); await pg.wait_for_selector("#pj-text")
-            await pg.fill("#pj-text", "build a replacement to hermes ai")
+            await pg.goto(U + "/#/projects/" + p["id"]); await pg.wait_for_selector("#chat-text")
+            await pg.fill("#chat-text", "build a replacement to hermes ai")
             await pg.keyboard.press("Enter")
             # The lookup chip, then the live lanes with a Stop button.
             await pg.wait_for_selector(".pj-read >> text=Searched the web for", timeout=60000)

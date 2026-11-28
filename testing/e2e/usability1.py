@@ -27,17 +27,17 @@ async def main():
             await pg.evaluate("() => document.querySelectorAll('.overlay').forEach(o => o.classList.add('hidden'))")
             name = "usab1-" + scheme
             pid = await pg.evaluate("(n) => fetch('/api/projects', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name:n})}).then(r => r.json()).then(r => r.id || r.project.id)", name)
-            await pg.goto(U + "/#/projects/" + pid); await pg.wait_for_selector("#pj-text")
+            await pg.goto(U + "/#/projects/" + pid); await pg.wait_for_selector("#chat-text")
             if scheme != "phone":
                 assert await pg.locator("#pj-panel").is_hidden(), "Threads panel closed on an empty project"
-            assert (await pg.inner_text("#pj-go")).strip() == "Ask"
+            assert (await pg.inner_text("#chat-send")).strip() == "Send"
             await pg.screenshot(path=S + f"project-empty-{scheme}.png")
             # Enter asks; Shift+Enter does not
-            await pg.fill("#pj-text", "Write a python word counter in wordcount/core.py with a pytest test")
+            await pg.fill("#chat-text", "Write a python word counter in wordcount/core.py with a pytest test")
             await pg.keyboard.press("Shift+Enter")
-            assert await pg.locator("#pj-feed .pj-ask").count() == 0, "Shift+Enter adds a line"
-            await pg.fill("#pj-text", "What does this project do?"); await pg.keyboard.press("Enter")
-            await pg.wait_for_selector("#pj-feed .pj-ask", timeout=10000)
+            assert await pg.locator("#chat-msgs .bubble").count() == 0, "Shift+Enter adds a line"
+            await pg.fill("#chat-text", "What does this project do?"); await pg.keyboard.press("Enter")
+            await pg.wait_for_selector("#chat-msgs .bubble", timeout=10000)
             await pg.evaluate("(id) => fetch('/api/projects/' + id, {method:'DELETE'})", pid)
             # Add node: one OS at a time
             await pg.goto(U + "/#/nodes"); await pg.wait_for_selector("#btn-add"); await pg.click("#btn-add"); await pg.wait_for_timeout(600)

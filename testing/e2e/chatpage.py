@@ -33,26 +33,21 @@ async def main():
             await pg.wait_for_selector(".chat-answer .chat-text", timeout=60000); await pg.wait_for_timeout(1200)
             assert await pg.locator(".mcard").count() == 0, "cards leave once a chat is open"
             await pg.screenshot(path=S + f"active-{scheme}.png")
-            # The Chats panel starts closed (the sidebar already lists the chats); the button opens it and closes it again.
-            assert await pg.locator(".chat-panel").is_hidden(), "panel starts closed"
-            await pg.screenshot(path=S + f"active-nopanel-{scheme}.png")
-            await pg.click("#chat-panel-btn")
-            assert await pg.locator(".chat-panel").is_visible(), "panel opens"
-            await pg.screenshot(path=S + f"active-{scheme}.png")
-            await pg.click("#chat-panel-btn")
-            assert await pg.locator(".chat-panel").is_hidden(), "panel toggles closed"
+            # The chats are listed in the left sidebar; the Chat page has no list of its own.
+            assert await pg.locator("#chat-panel, #chat-panel-btn, #chat-list").count() == 0, "the right-hand Chats panel is gone"
+            assert await pg.locator("#side-tasks .side-chat").count() >= 1, "the chat is listed in the sidebar"
+            assert await pg.locator("#side-tasks .side-chat.active").count() == 1, "and marked as the open one"
             await ctx.close()
         ctx = await b.new_context(ignore_https_errors=True, viewport={"width": 390, "height": 844}, color_scheme="dark", is_mobile=True, has_touch=True, device_scale_factor=2)
         pg = await ctx.new_page(); pg.on("pageerror", lambda e: errs.append(str(e)))
         await login(pg)
         await pg.goto(U + "/#/chat"); await pg.wait_for_selector(".mcard"); await pg.wait_for_timeout(600)
         await pg.screenshot(path=S + "phone-empty.png")
-        assert await pg.locator(".chat-panel").is_hidden()
-        await pg.click("#chat-panel-btn"); await pg.wait_for_timeout(300)
-        assert await pg.locator(".chat-panel").is_visible(), "phone: Chats opens a sheet"
+        await pg.click("#side-open"); await pg.wait_for_timeout(300)
+        assert await pg.locator("#side-tasks .side-chat").count() >= 1, "phone: the drawer lists the chats"
         await pg.screenshot(path=S + "phone-chats.png")
-        await pg.click(".chat-list a >> nth=0"); await pg.wait_for_timeout(1200)
-        assert await pg.locator(".chat-panel").is_hidden(), "picking a chat closes the sheet"
+        await pg.click("#side-tasks .side-chat a >> nth=0"); await pg.wait_for_timeout(1200)
+        assert await pg.locator("#side.open").count() == 0, "picking a chat closes the drawer"
         await pg.screenshot(path=S + "phone-active.png")
         print("console errors:", errs or "none")
         await b.close()

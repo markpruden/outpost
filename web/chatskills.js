@@ -49,9 +49,9 @@ function skillMenuRender() {
   setHTML('chat-plus-menu', `<button type="button" role="menuitem" data-sk-menu="attach"><span aria-hidden="true">📎</span> Attach images or documents</button>
     <button type="button" role="menuitem" data-sk-menu="run" aria-pressed="${run}"><span aria-hidden="true">▶</span> Run code${run ? ' <span class="muted">· on</span>' : ''}</button>
     <button type="button" role="menuitem" data-sk-menu="stash"><span aria-hidden="true">▦</span> Search a stash${shChatIds().length ? ` <span class="muted">· ${shChatIds().length} on</span>` : ''}</button>
-    <hr><div class="menu-h">Skills</div>
+    ${chatProject ? '' : `<hr><div class="menu-h">Skills</div>
     <button type="button" role="menuitem" data-sk-menu="image"><span aria-hidden="true">✦</span> Make an image</button>
-    <button type="button" role="menuitem" data-sk-menu="cad"><span aria-hidden="true">◇</span> Make a 3D model</button>`);
+    <button type="button" role="menuitem" data-sk-menu="cad"><span aria-hidden="true">◇</span> Make a 3D model</button>`}`);
 }
 $('chat-plus').onclick = (e) => {
   e.stopPropagation();
@@ -168,6 +168,7 @@ function skillTake() { // the text goes to the card; the composer is left empty
 }
 // Send with a skill chosen opens the card instead of sending a chat message.
 function skillIntercept(e) {
+  if (chatProject) return; // skills open their own pages; a project conversation keeps its message
   if (!chatSkill) { cadSendRoute(e); return; }
   e.preventDefault(); e.stopImmediatePropagation();
   const text = skillTake();

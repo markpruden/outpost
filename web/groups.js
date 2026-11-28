@@ -12,7 +12,8 @@ let groupClosed = (() => { try { return JSON.parse(lsGet('outpost.groupclosed') 
 let sideDragging = false, addingGroup = false, pendingMove = null, renamingGroupId = null, ctxGroup = null, ctxChat = null;
 const GROUP_COLORS = ['blue', 'green', 'purple', 'amber', 'red', 'teal'];
 const groupById = (id) => groups.find((g) => g.id === id);
-const chatById = (id) => sideChats.find((c) => c.id === id);
+// A chat is looked up among the sidebar's (plain) chats, a project's conversations in its Threads pane, and the one on screen.
+const chatById = (id) => sideChats.find((c) => c.id === id) || (typeof pjConvs !== 'undefined' && pjConvs.find((c) => c.id === id)) || (typeof chatCur !== 'undefined' && chatCur && chatCur.id === id ? chatCur : null);
 
 // refreshGroups fetches the group list and the chat list for the sidebar (at most every 2.5 s unless forced).
 // On the state stream they arrive with the state instead; this is the polling fallback.
@@ -241,11 +242,18 @@ function openChatMenu(id, x, y, from) {
   ctxChat = id; ctxReturn = from || null;
   const item = (act, text, extra = '') => `<button role="menuitem" tabindex="-1" data-gctx="${act}" ${extra}>${text}</button>`;
   const m = $('group-ctx');
-  m.innerHTML = [item('open-tab', 'Open in new tab'), item('group', 'Move to group<span class="hint-r">▸</span>', 'aria-haspopup="menu"'), item('copy-link', 'Copy link'), '<hr>', item('delete', 'Delete…<span class="kbd">Del</span>', 'class="danger"')].join('');
+  const inProject = !!c.project_id;
+  m.innerHTML = [item('open-tab', 'Open in new tab'), item('rename', 'Rename…'),
+    inProject ? '' : item('group', 'Move to group<span class="hint-r">▸</span>', 'aria-haspopup="menu"'),
+    item('project', (inProject ? 'Move to another project…' : 'Move to project…') + '<span class="hint-r">▸</span>', 'aria-haspopup="menu"'),
+    inProject ? item('unproject', 'Remove from project') : '',
+    inProject && typeof chatCur !== 'undefined' && chatCur && chatCur.id === id && chatCur.messages.some((x) => x.role === 'assistant' && x.text) ? item('totask', 'Make this a task…') : '',
+    item('copy-link', 'Copy link'), '<hr>', item('delete', 'Delete…<span class="kbd">Del</span>', 'class="danger"')].join('');
   m.setAttribute('aria-label', `Actions for ${c.title}`);
   m.dataset.kind = 'chat'; m.dataset.id = id;
   placeMenu(m, x, y);
   renderSideTasks(true);
+  if (page === 'project') renderProjectPage();
   m.querySelector('button').focus();
 }
 function openGroupMenu(id, x, y, from) {
@@ -273,31 +281,37 @@ function closeGroupCtx(restoreFocus = true) {
   m.classList.add('hidden'); m.innerHTML = '';
   ctxChat = ctxGroup = null;
   renderSideTasks(true);
+  if (page === 'project') renderProjectPage();
   if (restoreFocus && ctxReturn && document.body.contains(ctxReturn)) ctxReturn.focus();
   ctxReturn = null;
 }
 
 // The fold-out: the groups an item can go to. Beside the menu on a desktop, a bottom sheet on a phone.
 let subFor = null;
-function openGroupSub(kind, id, menuEl, focusFirst) {
+function openGroupSub(kind, id, menuEl, focusFirst, what) {
   const obj = kind === 'chat' ? chatById(id) : taskById(id);
   if (!obj) return;
-  subFor = { kind, id };
+  what = what || 'group';
+  subFor = { kind, id, what };
   const cur = obj.group_id || '';
   const s = $('group-sub');
-  s.innerHTML = `<div class="sub-title">Move to group</div>` + groups.map((g) => `<button role="menuitemradio" tabindex="-1" data-mv="${esc(g.id)}" aria-checked="${cur === g.id}"><i class="gsq gc-${esc(g.color)}" aria-hidden="true"></i>${esc(g.name)}${cur === g.id ? '<span class="ck">✓</span>' : ''}</button>`).join('')
+  const rowSel = what === 'project' ? '[data-gctx="project"]' : '[data-ctx="group"], [data-gctx="group"]';
+  if (what === 'project') {
+    const curP = obj.project_id || '';
+    s.innerHTML = `<div class="sub-title">Move to project</div>` + ((projects || []).filter((p) => p.id !== curP).map((p) => `<button role="menuitem" tabindex="-1" data-mvp="${esc(p.id)}">▤ ${esc(p.name)}</button>`).join('') || '<p class="side-empty">No other projects.</p>');
+  } else s.innerHTML = `<div class="sub-title">Move to group</div>` + groups.map((g) => `<button role="menuitemradio" tabindex="-1" data-mv="${esc(g.id)}" aria-checked="${cur === g.id}"><i class="gsq gc-${esc(g.color)}" aria-hidden="true"></i>${esc(g.name)}${cur === g.id ? '<span class="ck">✓</span>' : ''}</button>`).join('')
     + (groups.length ? '<hr>' : '') + `<button role="menuitem" tabindex="-1" data-mv-new>＋ New group…</button>` + (cur ? `<button role="menuitem" tabindex="-1" data-mv="">Remove from group</button>` : '');
   s.classList.remove('hidden');
   const phone = matchMedia('(max-width: 860px)').matches;
   $('group-sub-scrim').classList.toggle('hidden', !phone);
   if (!phone) {
-    const r = menuEl.getBoundingClientRect(), sr = s.getBoundingClientRect(), row = menuEl.querySelector('[data-ctx="group"], [data-gctx="group"]');
+    const r = menuEl.getBoundingClientRect(), sr = s.getBoundingClientRect(), row = menuEl.querySelector(rowSel);
     const rr = row ? row.getBoundingClientRect() : r;
     const left = r.right + 4 + sr.width > innerWidth - 6 ? Math.max(6, r.left - sr.width - 4) : r.right + 4;
     s.style.left = left + 'px';
     s.style.top = Math.max(6, Math.min(rr.top - 6, innerHeight - sr.height - 6)) + 'px';
   } else { s.style.left = s.style.top = ''; }
-  const row = menuEl.querySelector('[data-ctx="group"], [data-gctx="group"]');
+  const row = menuEl.querySelector(rowSel);
   if (row) { row.setAttribute('aria-expanded', 'true'); row.classList.add('sub-open'); }
   if (focusFirst) s.querySelector('button').focus();
 }
@@ -358,18 +372,59 @@ async function patchGroup(id, body) {
   renderSideTasks(true);
 }
 
+// Rename a chat or conversation (the chat's own title; the first message made the old one).
+async function renameChat(id) {
+  const c = chatById(id);
+  if (!c) return;
+  const name = await askText('Rename', c.title || '', { ok: 'Rename', body: '' });
+  if (name === null || !String(name).trim() || String(name).trim() === c.title) return;
+  sideSeq++;
+  const r = await post(`/api/chats/${id}/meta`, { title: String(name).trim() });
+  c.title = r.title;
+  if (typeof chatCur !== 'undefined' && chatCur && chatCur.id === id) { chatCur.title = r.title; $('chat-title').textContent = r.title; }
+  toast('Renamed'); renderSideTasks(true);
+  if (typeof pjConvsFetch === 'function') pjConvsFetch();
+}
+// Move a chat into a project ('' takes it out). The sidebar lists plain chats and a project lists its own conversations,
+// so the chat changes places; the one on screen follows it.
+async function moveChatToProject(id, pid) {
+  const c = chatById(id);
+  const was = c ? c.project_id || '' : '';
+  sideSeq++;
+  const r = await post(`/api/chats/${id}/meta`, { project_id: pid });
+  const there = r.project_id || '';
+  if (c) c.project_id = there;
+  const name = there ? ((projectById(there) || {}).name || 'the project') : '';
+  if (there) sideChats = sideChats.filter((x) => x.id !== id);
+  else if (c && !sideChats.some((x) => x.id === id)) sideChats.unshift(c);
+  toast(there ? `Moved to ${name}` : 'Moved to Chat, out of the project');
+  renderSideTasks(true);
+  const onScreen = (page === 'chat' && pageArg === id) || (page === 'project' && chatWant === id);
+  if (onScreen) {
+    if (there) location.hash = `#/projects/${there}/chats/${id}`;
+    else if (page === 'project') { if (typeof pjConvAfterRemove === 'function') pjConvAfterRemove(id); }
+  } else if (page === 'project' && was === pageArg && typeof pjConvAfterRemove === 'function') pjConvAfterRemove(id);
+  if (page === 'project' && there === pageArg && typeof pjConvsFetch === 'function') pjConvsFetch();
+  refreshGroups(true);
+}
+
 async function runGroupCtx(act, kind, id) {
   closeGroupCtx(act !== 'rename');
   try {
     if (kind === 'chat') {
-      if (act === 'open-tab') window.open('#/chat/' + id, '_blank', 'noopener');
-      else if (act === 'copy-link') { await copyText(location.origin + location.pathname + '#/chat/' + id); toast('Link copied'); }
+      const c = chatById(id);
+      if (act === 'open-tab') window.open(c ? chatHref(c) : '#/chat/' + id, '_blank', 'noopener');
+      else if (act === 'copy-link') { await copyText(location.origin + location.pathname + (c ? chatHref(c) : '#/chat/' + id)); toast('Link copied'); }
+      else if (act === 'rename') await renameChat(id);
+      else if (act === 'totask') $('chat-totask').click();
+      else if (act === 'unproject') await moveChatToProject(id, '');
       else if (act === 'delete') {
         if (!await askConfirm('Delete this chat?', { danger: true, ok: 'Delete' })) return;
         sideSeq++;
         await api(`/api/chats/${id}`, { method: 'DELETE' });
-        sideChats = sideChats.filter((c) => c.id !== id);
+        sideChats = sideChats.filter((x) => x.id !== id);
         if (page === 'chat' && pageArg === id) location.hash = '#/chat';
+        if (page === 'project' && typeof pjConvAfterRemove === 'function') pjConvAfterRemove(id);
         toast('Chat deleted'); renderSideTasks(true);
       }
       return;
@@ -448,25 +503,27 @@ async function runGroupCtx(act, kind, id) {
     const b = e.target.closest('[data-gctx]');
     if (!b) return;
     if (b.dataset.gctx === 'group') { openGroupSub(m.dataset.kind, m.dataset.id, m, true); return; }
+    if (b.dataset.gctx === 'project') { openGroupSub(m.dataset.kind, m.dataset.id, m, true, 'project'); return; }
     runGroupCtx(b.dataset.gctx, m.dataset.kind, m.dataset.id);
   });
   menuKeys(m, closeGroupCtx);
   sub.addEventListener('click', async (e) => {
-    const b = e.target.closest('[data-mv], [data-mv-new]');
+    const b = e.target.closest('[data-mv], [data-mv-new], [data-mvp]');
     if (!b || !subFor) return;
     const { kind, id } = subFor;
     closeTaskMenu(false); closeGroupCtx(false);
-    if (b.hasAttribute('data-mv-new')) startNewGroup({ kind, id });
+    if (b.hasAttribute('data-mvp')) { try { await moveChatToProject(id, b.dataset.mvp); } catch (x) { toast(x.message); } }
+    else if (b.hasAttribute('data-mv-new')) startNewGroup({ kind, id });
     else await moveItem(kind, id, b.dataset.mv);
   });
   menuKeys(sub, () => closeGroupSub(true));
   // ArrowRight opens the fold-out from "Move to group", ArrowLeft closes it.
   document.addEventListener('keydown', (e) => {
-    const row = e.target.closest && e.target.closest('[data-ctx="group"], [data-gctx="group"]');
+    const row = e.target.closest && e.target.closest('[data-ctx="group"], [data-gctx="group"], [data-gctx="project"]');
     if (row && e.key === 'ArrowRight') {
       e.preventDefault();
-      const menu = row.closest('.ctx-menu');
-      if (menu.id === 'task-ctx') openGroupSub('task', ctxTaskId, menu, true); else openGroupSub(menu.dataset.kind, menu.dataset.id, menu, true);
+      const menu = row.closest('.ctx-menu'), what = row.dataset.gctx === 'project' ? 'project' : 'group';
+      if (menu.id === 'task-ctx') openGroupSub('task', ctxTaskId, menu, true); else openGroupSub(menu.dataset.kind, menu.dataset.id, menu, true, what);
     } else if (e.target.closest && e.target.closest('#group-sub') && e.key === 'ArrowLeft') { e.preventDefault(); closeGroupSub(true); }
   });
   // Hovering "Move to group" opens the fold-out (a pointer only; touch uses the tap).
@@ -474,12 +531,13 @@ async function runGroupCtx(act, kind, id) {
     if (!matchMedia('(hover: hover)').matches) return;
     const menu = e.target.closest && e.target.closest('#task-ctx, #group-ctx');
     if (!menu || menu.classList.contains('hidden')) return;
-    const row = e.target.closest('[data-ctx="group"], [data-gctx="group"]');
-    if (row) { if (sub.classList.contains('hidden')) { if (menu.id === 'task-ctx') openGroupSub('task', ctxTaskId, menu, false); else openGroupSub(menu.dataset.kind, menu.dataset.id, menu, false); } }
+    const row = e.target.closest('[data-ctx="group"], [data-gctx="group"], [data-gctx="project"]');
+    const what = row && row.dataset.gctx === 'project' ? 'project' : 'group';
+    if (row) { if (sub.classList.contains('hidden') || (subFor && subFor.what !== what)) { if (menu.id === 'task-ctx') openGroupSub('task', ctxTaskId, menu, false); else { closeGroupSub(); openGroupSub(menu.dataset.kind, menu.dataset.id, menu, false, what); } } }
     else if (!sub.classList.contains('hidden') && e.target.closest('button')) closeGroupSub();
   });
   document.addEventListener('pointerdown', (e) => {
-    if (ctxChat || ctxGroup) { if (!m.contains(e.target) && !sub.contains(e.target) && !e.target.closest('[data-chat-menu], [data-group-menu]')) closeGroupCtx(false); }
+    if (ctxChat || ctxGroup) { if (!m.contains(e.target) && !sub.contains(e.target) && !e.target.closest('[data-chat-menu], [data-group-menu], #chat-more')) closeGroupCtx(false); }
     else if (!sub.classList.contains('hidden') && !sub.contains(e.target) && !e.target.closest('#task-ctx')) closeGroupSub();
   });
   side.addEventListener('scroll', () => closeGroupCtx(false));

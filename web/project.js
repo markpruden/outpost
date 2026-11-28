@@ -1,11 +1,13 @@
 'use strict';
 // ---------- projects ----------
-// #/projects lists the projects as cards. #/projects/<id> is one project: its
-// requests and their tasks in the middle, a box that starts a task in the project,
-// and the Threads panel on the right (artifacts, then the project's tasks grouped
-// as Waiting on you, Working, Idle and Resolved). Files and settings open as dialogs.
+// #/projects lists the projects as cards. #/projects/<id> is one project: in the middle the
+// same conversation view as the Chat page (chat.js, moved in by pjPlaceChat) with the
+// project's planner as its default model and an Ask | Task | Research switch, and the
+// Threads panel on the right (artifacts, the project's conversations, then its tasks grouped
+// as Waiting on you, Working, Idle and Resolved). #/projects/<id>/chats/<chat> opens one
+// conversation (#/projects/<id> the most recent). Files and settings open as dialogs.
 
-let pjTimer = 0, pjData = null, pjDataFor = '', pjFetchedAt = 0, pjFetching = false, pjResolvedOpen = false, pjNewDraft = '';
+let pjData = null, pjDataFor = '', pjFetchedAt = 0, pjFetching = false;
 const pjWide = () => matchMedia('(min-width: 1100px)').matches;
 function pjPanelPref() { try { const v = localStorage.getItem('pj-panel'); return v === null ? null : v === '1'; } catch (e) { return null; } }
 let pjPanelOpen = pjPanelPref() ?? pjWide();
@@ -50,27 +52,167 @@ async function pjFetch(force) {
   pjFetching = true;
   try {
     const d = await api(`/api/projects/${encodeURIComponent(id)}/overview`);
-    if (pageArg === id) {
-      pjData = d; pjDataFor = id; pjFetchedAt = Date.now(); renderProjectPage();
-      clearTimeout(pjTimer);
-      if (d.chat && (d.chat.busy || d.chat.research)) pjTimer = setTimeout(() => { if (page === 'project' && pageArg === id) pjFetch(true); }, 1200);
-    }
+    if (pageArg === id) { pjData = d; pjDataFor = id; pjFetchedAt = Date.now(); renderProjectPage(); }
   } catch (e) { if (pageArg === id) { pjData = null; pjDataFor = id; pjFetchedAt = Date.now(); renderProjectPage(); } }
   pjFetching = false;
+  pjConvsFetch();
 }
 let pjRouteFor = ''; // the project the page was last routed to; '' after leaving the page
 function projectRoute() {
-  if (pjDataFor !== pageArg) { pjData = null; pjResolvedOpen = !pjFolded.has('resolved'); pjCtx.mem = pjCtx.stash = null; }
-  if (pjRouteFor !== pageArg) { // a fresh visit; opening or closing a task in the pane keeps the composer and the panel
-    $('pj-text').value = pjNewDraft = '';
-    autoGrow($('pj-text'));
+  const fresh = pjRouteFor !== pageArg; // a fresh visit; opening or closing a task in the pane keeps the composer, the conversation and the panel
+  if (pjDataFor !== pageArg) { pjData = null; pjCtx.mem = pjCtx.stash = null; }
+  if (fresh) {
+    $('chat-text').value = ''; $('chat-text').style.height = '';
+    if (typeof chatImg !== 'undefined') chatImg.clear();
+    pjConvs = []; pjConvsFor = ''; pjConvSel = ''; chatProject = ''; // the conversation view is opened again for this project
     pjPanelOpen = pjPanelPref() ?? pjPanelDefault(pageArg);
     if (!pjWide()) pjPanelOpen = false; // the phone opens the panel by hand, as a sheet
   }
+  if (paneChat) pjConvSel = paneChat;
   pjRouteFor = pageArg;
   if (paneTask) pjPanelOpen = true;
+  pjPlaceChat();
   renderProjectPage();
   pjFetch(true);
+  if (chatCur && chatShows(chatCur.id)) chatStream(chatCur.id); // route() closed the live stream
+}
+
+// ---------- the conversation in the middle ----------
+// The Chat page's view (#chat-main) is moved into the project page while it shows a project, and back
+// to the Chat page afterwards, so one set of code (chat.js) serves both; route() calls this.
+const pjChatMain = document.getElementById('chat-main');
+const pjChatHome = { parent: pjChatMain.parentElement, next: pjChatMain.nextElementSibling };
+function pjPlaceChat() {
+  const inProj = pjChatMain.parentElement === $('pj-conv');
+  if (page === 'project') { if (!inProj) $('pj-conv').append(pjChatMain); }
+  else if (inProj) {
+    pjChatHome.parent.insertBefore(pjChatMain, pjChatHome.next);
+    if (page !== 'chat') chatProject = '';
+  }
+}
+let pjConvs = [], pjConvsFor = '', pjConvSel = '', pjConvAll = false, pjConvsFetching = false, pjCardsSig = '';
+async function pjConvsFetch() {
+  const id = pageArg;
+  if (page !== 'project' || !id || pjConvsFetching) return;
+  pjConvsFetching = true;
+  try {
+    const list = await api('/api/chats?project=' + encodeURIComponent(id));
+    if (page === 'project' && pageArg === id) { pjConvs = list; pjConvsFor = id; pjConvSync(); renderProjectPage(); }
+  } catch (e) { /* offline: the list stays as it was */ }
+  pjConvsFetching = false;
+}
+// Show the selected conversation: the one in the address, else the one used last in this visit, else the most recent.
+function pjConvSync() {
+  if (page !== 'project' || pjConvsFor !== pageArg) return;
+  const pid = pageArg;
+  const id = pjConvSel === 'new' ? '' : pjConvSel || (pjConvs[0] ? pjConvs[0].id : '');
+  if (chatProject === pid && chatWant === id) return;
+  chatOpenProject(pid, id);
+}
+// chat.js tells the project page when the conversation it shows was (re)loaded: keep the list's title and count current.
+function pjConvChanged(c) {
+  const row = pjConvs.find((x) => x.id === c.id);
+  if (row) { row.title = c.title; row.messages = (c.messages || []).length; row.busy = c.busy; renderProjectPage(); }
+}
+const pjConvHref = (c) => `#/projects/${c.project_id || pageArg}/chats/${c.id}`;
+const chatHref = (c) => (c.project_id ? `#/projects/${c.project_id}/chats/${c.id}` : '#/chat/' + c.id);
+function pjPlannerName(p) {
+  const v = (p && p.planner) || '';
+  if (v === 'claude') return 'Claude';
+  if (v === 'openrouter') return (state && state.openrouter_label) || 'OpenRouter';
+  if (v.startsWith('node:')) { const n = nodeById(v.slice(5)); return n ? nodeName(n) : ''; }
+  return v === 'auto' || v === 'auto_api' ? 'Auto' : '';
+}
+function pjPlannerLabel() { const n = pjPlannerName(projectById(chatProject)); return 'Project planner' + (n ? ` (${n})` : ''); }
+// The empty conversation: what the project page used to say, above the cards that pick who answers.
+function pjEmptyHead() {
+  const p = chatProject && projectById(chatProject);
+  if (!p) return '';
+  return `<div class="pj-empty"><h3>What should ${esc(p.name)} do next?</h3><p class="hint"><b>Ask</b> talks it over with the planner, which can start tasks for you. <b>Task</b> skips the talk and runs your message as a task. <b>Research</b> searches the web on several nodes and saves the report to the Stash. Every task starts from the project's current files; one runs at a time.</p></div>`;
+}
+
+// Ask | Task | Research: what Send does. Research uses the chat engine's research mode for that message; the model
+// box is set to it and put back when the switch goes back to Ask or Task.
+let pjMode = 'ask', pjPrevNode = 'planner';
+function pjModeSet(mode, quiet) {
+  const node = $('chat-node');
+  if (mode === 'research' && node.value !== 'research') { pjPrevNode = node.value; node.value = 'research'; }
+  else if (mode !== 'research' && node.value === 'research') node.value = [...node.options].some((o) => o.value === pjPrevNode) && pjPrevNode !== 'research' ? pjPrevNode : 'planner';
+  pjMode = mode;
+  document.querySelectorAll('#pj-mode [data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+  $('chat-send').textContent = mode === 'task' ? 'Start task' : mode === 'research' ? 'Research' : 'Send';
+  $('pj-more').classList.toggle('hidden', !(mode === 'task' && chatProject));
+  if (!quiet) { if (!chatCur) chatPickRender(); $('chat-text').focus(); }
+}
+// Picking Research in the model box is the same as the Research switch.
+function pjModeFromNode() {
+  const r = $('chat-node').value === 'research';
+  if (r && pjMode !== 'research') { pjMode = 'research'; pjModeSet('research', true); }
+  else if (!r && pjMode === 'research') pjModeSet('ask', true);
+}
+$('pj-mode').addEventListener('click', (e) => { const b = e.target.closest('[data-mode]'); if (b) pjModeSet(b.dataset.mode); });
+$('pj-more').onclick = (e) => {
+  e.preventDefault();
+  try { localStorage.setItem('nt-project', chatProject); } catch (x) { /* storage optional */ }
+  const pid = chatProject, text = $('chat-text').value;
+  location.hash = '#/new';
+  setTimeout(() => { $('nt-project').value = pid; if (text) { $('nt-prompt').value = text; autoGrow($('nt-prompt')); } renderNew(); }, 0);
+};
+// Task: start the message as a task in this project, with the project's settings, and record it in the conversation.
+async function pjStartTask(text) {
+  if (!text) return;
+  if (chatImg.payload().length || chatImg.docs().length) { toast('Pictures and documents go with Ask. To give a task files, use More options…', 5000); return; }
+  $('chat-send').disabled = true;
+  try {
+    if (chatCur) {
+      await post(`/api/chats/${encodeURIComponent(chatCur.id)}/task`, { text });
+      toast('Task started');
+      $('chat-text').value = ''; $('chat-text').style.height = '';
+      tasksSeq++; await refresh();
+      await chatLoad(chatCur.id);
+    } else {
+      const r = await post('/api/chats/task', { text, project_id: chatProject });
+      toast('Task started');
+      $('chat-text').value = ''; $('chat-text').style.height = '';
+      tasksSeq++; await refresh();
+      location.hash = `#/projects/${chatProject}/chats/${r.chat}`;
+    }
+    pjConvsFetch();
+  } catch (e) { toast(e.message, 4000); }
+  chatButtons();
+}
+
+// Cards for the tasks a message started, live, under it.
+function pjTaskCards(ids) {
+  if (!(ids || []).length) return '';
+  const byId = {}; projectTasks(chatProject).forEach((t) => { byId[t.id] = t; });
+  const feed = {}; ((pjData && pjDataFor === chatProject && pjData.feed) || []).forEach((f) => { feed[f.id] = f; });
+  const html = ids.filter((id) => byId[id]).map((id) => pjTaskCard(byId[id], feed[id])).join('');
+  return html ? `<div class="pj-cards-under">${html}</div>` : '';
+}
+// A change in those cards redraws the conversation; nothing else does on a state push.
+function pjCardsSigFor() {
+  if (!chatCur || !chatProject) return '';
+  const ids = new Set(); chatCur.messages.forEach((m) => (m.tasks || []).forEach((id) => ids.add(id)));
+  if (!ids.size) return '';
+  const feed = {}; ((pjData && pjDataFor === chatProject && pjData.feed) || []).forEach((f) => { feed[f.id] = f; });
+  return projectTasks(chatProject).filter((t) => ids.has(t.id)).map((t) => [t.id, t.title, t.status, t.done, t.total, t.round, t.updated, t.resolved, t.needs_you, (feed[t.id] || {}).result, ((feed[t.id] || {}).subtasks || []).join('')].join('|')).join(';');
+}
+// What the answer was written with: the files it read, as chips that open the viewer.
+function pjKnownFiles() {
+  const known = new Set(((pjData && pjDataFor === chatProject && pjData.files) || []).map((f) => f.path));
+  ((chatCur && chatCur.messages) || []).forEach((m) => (m.reads || []).forEach((r) => { const x = /^Read (\S+)/.exec(r); if (x) known.add(x[1]); }));
+  return known;
+}
+// A research answer's question above it, and where the report was saved below it (the Stash, so tasks can use it).
+// A project research run is a message of its own, kept while it works: its lanes show live with a Stop button.
+const RS_LIVE = ['planning', 'lanes', 'writing'];
+function pjRsLive(m) { return m.research && RS_LIVE.includes(m.research.stage) ? researchLive(m.research).replace('</div>', ' <button class="small" data-act="proj-chat-stop">Stop</button></div>') : ''; }
+function pjResearchHead(m) { return m.research && m.question ? `<div class="pj-rs-q">🔎 Research: ${esc(m.question)}</div>` : ''; }
+function pjResearchSaved(m) { return m.saved ? `<div class="pj-rs-saved muted">Saved to the project's <a href="#" data-act="proj-open-stash">Stash</a> as ${esc(m.saved)}, so tasks can use it.</div>` : ''; }
+// The planner could not answer (no key, no node): a way to pick another.
+function pjPlannerFix(m) {
+  return /planner|API key/i.test(m.error) && m.error !== 'stopped' ? `<div class="card-actions"><button class="small" data-act="proj-planner-pick" data-id="${esc(chatProject)}">Pick this project's planner</button> <a href="#/settings" data-act="proj-planner-settings">Open Settings → Tasks</a></div>` : '';
 }
 
 function pjStrip(subs, cls = 'strip') {
@@ -92,58 +234,6 @@ function pjTaskCard(t, f) {
       <div class="pj-tmeta ${tone === 'needs' ? 'needs' : tone === 'bad' ? 'bad' : ''}">${esc(pjTaskMeta(t))} · ${ago(t.updated)}</div>
       ${WORKING.includes(t.status) && f ? pjStrip(f.subtasks) : ''}${result}</div>
     <div class="pj-tact">${act}</div></div>`;
-}
-
-// The middle of the page: the project conversation, with each task it started
-// as a live card under the message, plus tasks started elsewhere (the New task
-// page, a schedule) as their request and card, all in time order.
-function renderPjFeed(p) {
-  const list = projectTasks(p.id);
-  const byId = {}; list.forEach((t) => { byId[t.id] = t; });
-  const ov = pjData && pjDataFor === p.id ? pjData : null;
-  if (!ov) return `<div class="pj-empty">${pjDataFor === p.id ? 'Could not load this project.' : 'Loading…'}</div>`;
-  const feedById = {}; ov.feed.forEach((f) => { feedById[f.id] = f; });
-  const msgs = (ov.chat && ov.chat.messages) || [];
-  const inChat = new Set(); msgs.forEach((m) => (m.tasks || []).forEach((id) => inChat.add(id)));
-  const showTask = (id) => byId[id] && (pjResolvedOpen || !byId[id].resolved);
-  const cards = (ids) => (ids || []).filter(showTask).map((id) => pjTaskCard(byId[id], feedById[id])).join('');
-  const items = [];
-  const known = new Set((ov.files || []).map((f) => f.path));
-  pvReset();
-  msgs.forEach((m) => (m.reads || []).forEach((r) => { const x = /^Read (\S+)/.exec(r); if (x) known.add(x[1]); }));
-  msgs.forEach((m) => {
-    let html;
-    if (m.role === 'user') html = `<div class="pj-ask"><div class="bubble">${esc(m.text)}</div><span class="pj-when">${(m.tasks || []).length ? 'started as a task · ' : ''}${ago(m.time)}</span></div>${cards(m.tasks)}`;
-    else {
-      const meta = [m.who && esc(m.who), m.cost_usd ? usd(m.cost_usd) : '', ago(m.time)].filter(Boolean).join(' · ');
-      html = `<div class="pj-answer">${pjResearch(m)}${pjReads(m.reads)}${m.text ? `<div class="pj-answer-text md">${pjLinkRefs(md(m.text), known)}</div>` : ''}${m.text ? pvCards(pvCollect(m.text)) : ''}${offerCard(m, { project: p.id })}${memSuggestCard(m, { project: p.id })}${m.error ? `<div class="error-msg">${m.error === 'stopped' ? 'Stopped.' : esc(m.error)}${/planner|API key/i.test(m.error) && m.error !== 'stopped' ? `<div class="card-actions"><button class="small" data-act="proj-planner-pick" data-id="${esc(p.id)}">Pick this project's planner</button> <a href="#/settings" data-act="proj-planner-settings">Open Settings → Tasks</a></div>` : ''}</div>` : ''}${cards(m.tasks)}<div class="pj-when">${meta}</div></div>`;
-    }
-    items.push({ time: new Date(m.time).getTime(), html });
-  });
-  let hidden = 0;
-  ov.feed.forEach((f) => {
-    if (inChat.has(f.id) || !byId[f.id]) return;
-    if (!showTask(f.id)) { hidden++; return; }
-    items.push({ time: new Date(f.created).getTime(), html: f.requests.map((r) => `<div class="pj-ask"><div class="bubble">${esc(r.text)}</div><span class="pj-when">${ago(r.time)}</span></div>`).join('') + pjTaskCard(byId[f.id], f) });
-  });
-  inChat.forEach((id) => { if (byId[id] && !showTask(id)) hidden++; });
-  items.sort((x, y) => x.time - y.time);
-  if (ov.chat && ov.chat.busy) items.push({ html: `<div class="pj-answer pj-thinking"><span class="dots" aria-label="Thinking"><i></i><i></i><i></i></span> <span class="muted">${(ov.chat.reading || []).length ? 'Reading the project…' : 'Thinking…'}</span> <button class="small" data-act="proj-chat-stop">Stop</button>${pjReads(ov.chat.reading)}</div>` });
-  const more = hidden > 0 ? `<button class="link-btn pj-showres" data-act="proj-show-resolved">${pjResolvedOpen ? 'Hide resolved tasks' : `${hidden} resolved task${hidden === 1 ? '' : 's'} hidden. Show them`}</button>` : '';
-  if (!items.length) return `${more}<div class="pj-empty"><h3>What should ${esc(p.name)} do next?</h3><p class="hint"><b>Ask</b> talks it over with the planner, which can start tasks for you. <b>Start as task</b> skips the talk and runs your message as a task. Every task starts from the project's current files; one runs at a time.</p></div>`;
-  return more + items.map((i) => `<div class="pj-item">${i.html}</div>`).join('');
-}
-
-// pjResearch shows a research answer (projects_research.go): the lanes while
-// it works, then a folded record above the report and where it was saved.
-const RS_LIVE = ['planning', 'lanes', 'writing'];
-function pjResearch(m) {
-  const r = m.research;
-  if (!r) return '';
-  const q = m.question ? `<div class="pj-rs-q">🔎 Research: ${esc(m.question)}</div>` : '';
-  if (RS_LIVE.includes(r.stage)) return `${q}${researchLive(r).replace('</div>', ' <button class="small" data-act="proj-chat-stop">Stop</button></div>')}`;
-  const saved = m.saved ? `<div class="pj-rs-saved muted">Saved to the project's <a href="#" data-act="proj-open-stash">Stash</a> as ${esc(m.saved)}, so tasks can use it.${m.note ? ' ' + esc(m.note) : ''}</div>` : (m.note ? `<div class="pj-rs-saved muted">${esc(m.note)}</div>` : '');
-  return `${q}${researchCard(m)}${saved}`;
 }
 
 // pjReads shows what the planner looked at while answering, one chip per tool call.
@@ -218,6 +308,24 @@ function pjRow(t, f) {
     <span class="pj-row-r">${rb}<span>${ago(t.updated).replace(' ago', '')}</span></span>
     ${extra ? `<div class="pj-row-x">${extra}</div>` : ''}</div>`;
 }
+// The Conversations group: one compact row per conversation of the project, newest first.
+const PJ_CONV_ROWS = 8; // rows before "Show all"
+function pjConvRow(c) {
+  const active = chatProject === pageArg && chatWant === c.id;
+  const sub = c.busy ? 'Answering' : `${c.messages} message${c.messages === 1 ? '' : 's'}`;
+  return `<div class="pj-row pj-conv-row g-conv ${active ? 'active' : ''} ${ctxChat === c.id ? 'menu-open' : ''}" data-chat="${esc(c.id)}">${statusIcon(c.busy ? 'chatbusy' : 'chat')}
+    <a class="pj-row-main" href="${esc(pjConvHref(c))}" ${active ? 'aria-current="true"' : ''}><span class="pj-row-t pj-1">${esc(c.title)}</span><span class="pj-row-m">${sub}</span></a>
+    <span class="pj-row-r"><span>${ago(c.updated).replace(' ago', '')}</span><button class="pj-rb pj-conv-more" data-chat-menu="${esc(c.id)}" aria-haspopup="menu" aria-expanded="${ctxChat === c.id}" aria-label="Actions for ${esc(c.title)}" title="Actions">⋯</button></span></div>`;
+}
+function pjConvSection(p) {
+  const list = pjConvsFor === p.id ? pjConvs : [];
+  const folded = pjFolded.has('convs');
+  const shown = pjConvAll || list.length <= PJ_CONV_ROWS + 1 ? list : list.slice(0, PJ_CONV_ROWS);
+  const more = list.length > shown.length ? `<button class="link-btn pj-showres" data-act="proj-convs-all">Show all ${list.length}</button>` : pjConvAll && list.length > PJ_CONV_ROWS + 1 ? '<button class="link-btn pj-showres" data-act="proj-convs-all">Show fewer</button>' : '';
+  const add = '<span class="spacer"></span><button class="link-btn" data-act="proj-conv-new" title="Start another conversation in this project">＋ New conversation</button>';
+  const head = `<div class="pj-sec-h"><button class="pj-toggle" data-act="proj-fold" data-key="convs" aria-expanded="${!folded}"><b>Conversations</b><span class="pj-n">· ${list.length}</span><span class="pj-chev" aria-hidden="true">${folded ? '›' : '⌄'}</span></button>${add}</div>`;
+  return `<section class="pj-sec convs">${head}${folded ? '' : (list.length ? shown.map(pjConvRow).join('') + more : '<p class="pj-none">No conversations yet. Ask something below to start one.</p>')}</section>`;
+}
 const ART_ICON = { shot: '▭', build: '⚙', result: '▣', pr: '⇄', resource: '▤', upload: '▤', folder: '▱' };
 const ART_KIND = { shot: 'Screenshot', build: 'Build', result: 'Result', pr: 'GitHub', resource: 'Stash', upload: 'Uploaded', folder: 'Uploaded folder' };
 function pjArtCard(a) {
@@ -236,7 +344,6 @@ const pjFolded = new Set((() => { try { const v = JSON.parse(localStorage.getIte
 function pjFold(key) {
   if (pjFolded.has(key)) pjFolded.delete(key); else pjFolded.add(key);
   try { localStorage.setItem('outpost.pjFolded', JSON.stringify([...pjFolded])); } catch (e) { /* only for this visit */ }
-  pjResolvedOpen = !pjFolded.has('resolved');
 }
 const PJ_ARTS_ROW = 12; // cards in the scrolling row before "View all"
 function renderPjPanel(p) {
@@ -258,8 +365,9 @@ function renderPjPanel(p) {
       ${pjFolded.has('arts') ? '' : `<div class="pj-arts-wrap"><div class="pj-arts" id="pj-arts-row">${shown.map(pjArtCard).join('')}${arts.length > 4 ? `<button class="pj-acard pj-aall" data-act="proj-arts">View all ${arts.length}</button>` : ''}</div>
         <button class="pj-ascroll prev" data-act="proj-arts-scroll" data-dir="-1" aria-label="Scroll artifacts left" tabindex="-1">‹</button><button class="pj-ascroll next" data-act="proj-arts-scroll" data-dir="1" aria-label="Scroll artifacts right" tabindex="-1">›</button></div>`}</section>`
     : `<section class="pj-sec arts"><div class="pj-sec-h"><b>Artifacts</b><span class="pj-n">· 0</span>${up}</div><p class="pj-none">Screenshots, builds, result files, files you upload, pull requests and the project's <button class="link-btn" data-act="proj-stash">Stash</button> documents show here.</p></section>`;
-  const none = list.length ? '' : '<p class="pj-none">No tasks yet. Ask something below, or start it as a task.</p>';
+  const none = list.length ? '' : '<p class="pj-none">No tasks yet. Ask something in the conversation, or start it as a task.</p>';
   return `${artsSec}
+    ${pjConvSection(p)}
     ${sec('waiting', 'Waiting on you')}
     ${sec('working', 'Working', groups.working.length > 1 ? '<span class="pj-note" title="One task works at a time; the rest are queued">one at a time</span>' : '')}
     ${sec('idle', 'Idle', groups.idle.some(canResolve) && !pjFolded.has('idle') ? '<span class="spacer"></span><button class="link-btn" data-act="proj-resolve-all">Resolve all</button>' : '')}
@@ -282,7 +390,8 @@ function renderProjectPage() {
   pjPaneChrome();
   if (!p) {
     $('pj-name').textContent = projects ? 'Project not found' : 'Loading…';
-    setHTML('pj-feed', projects ? `<div class="pj-empty"><h3>This project does not exist any more.</h3><p><a href="#/projects">All projects</a></p></div>` : '');
+    $('pj-conv').classList.toggle('gone', !!projects);
+    setHTML('pj-gone', projects ? `<div class="pj-empty"><h3>This project does not exist any more.</h3><p><a href="#/projects">All projects</a></p></div>` : '');
     setHTML('pj-threads', '');
     return;
   }
@@ -296,10 +405,9 @@ function renderProjectPage() {
   $('pj-threads-btn').setAttribute('aria-expanded', String(pjPanelOpen));
   $('pj-threads-btn').classList.toggle('on', pjPanelOpen);
   $('pj-download').href = `/api/projects/${encodeURIComponent(p.id)}/download`;
-  const feedEl = $('pj-feed'), atEnd = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 40;
-  const before = feedEl._h;
-  setHTML(feedEl, renderPjFeed(p));
-  if (before !== feedEl._h && (atEnd || !before)) feedEl.scrollTop = feedEl.scrollHeight;
+  $('pj-conv').classList.remove('gone'); setHTML('pj-gone', '');
+  const sig = pjCardsSigFor();
+  if (sig !== pjCardsSig) { pjCardsSig = sig; if (chatCur && chatShows(chatCur.id)) chatRender(); } // the task cards under the messages follow the tasks
   if (!paneTask && pjTab === 'threads') { setHTML('pj-threads', renderPjPanel(p)); pjArtsArrows(); }
   if (!paneTask && pjTab === 'context' && pjPanelOpen) { setHTML('pj-context', renderPjContext(p)); pjCtxLoad(p.id); }
   if ($('modal-pj-files') && !$('modal-pj-files').classList.contains('hidden')) renderPjFiles(p);
@@ -474,34 +582,6 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && page === 'project' && pjPanelOpen && !pjWide() && !document.querySelector('.overlay:not(.hidden)')) setPjPanel(false);
 });
 
-// Send a message to the project conversation, or (asTask) start it as a task at
-// once. The project's own defaults (planner, review, fix rounds, node label) apply.
-async function pjSend(asTask) {
-  const text = $('pj-text').value;
-  if (!text.trim()) { $('pj-text').focus(); return; }
-  $('pj-go').disabled = $('pj-task').disabled = true;
-  try {
-    await post(`/api/projects/${encodeURIComponent(pageArg)}/chat`, { text, mode: asTask ? 'task' : '' });
-    $('pj-text').value = ''; autoGrow($('pj-text'));
-    if (asTask) { toast('Task started'); tasksSeq++; await refresh(); }
-    await pjFetch(true);
-    $('pj-feed').scrollTop = $('pj-feed').scrollHeight;
-  } catch (e) { toast(e.message, 4000); }
-  $('pj-go').disabled = $('pj-task').disabled = false;
-}
-$('pj-go').onclick = () => pjSend(false);
-$('pj-task').onclick = () => pjSend(true);
-// Enter asks, like Chat (or Ctrl+Enter, by the Chat send-key setting); Shift+Enter adds a line. Not while an input method is composing.
-$('pj-text').addEventListener('keydown', (e) => { if (composerEnterSends(e)) { e.preventDefault(); pjSend(false); } });
-$('pj-text').addEventListener('input', () => autoGrow($('pj-text')));
-$('pj-more').onclick = (e) => {
-  e.preventDefault();
-  try { localStorage.setItem('nt-project', pageArg); } catch (x) {}
-  const text = $('pj-text').value;
-  location.hash = '#/new';
-  setTimeout(() => { $('nt-project').value = pageArg; if (text) { $('nt-prompt').value = text; autoGrow($('nt-prompt')); } renderNew(); }, 0);
-};
-
 // ---------- Files, settings, artifacts and new-project dialogs ----------
 function renderPjFiles(p) {
   const files = (pjData && pjDataFor === p.id && pjData.files) || [];
@@ -542,6 +622,28 @@ function openPjArts() {
   open('modal-pj-arts');
 }
 
+// Clear conversation…: empties the conversation on screen (the first one is kept, emptied; another one is deleted,
+// since a chat cannot be emptied any other way). From the menu of a project that is not open, the first one.
+async function pjClearConv(pid) {
+  const p = projectById(pid) || {};
+  const shown = page === 'project' && pageArg === pid && chatProject === pid && chatCur ? chatCur : null;
+  if (shown && shown.id !== p.conv_chat_id) {
+    if (!await askConfirm('Delete this conversation? The tasks it started are kept.', { danger: true, ok: 'Delete' })) return;
+    await api(`/api/chats/${encodeURIComponent(shown.id)}`, { method: 'DELETE' });
+    toast('Conversation deleted'); pjConvAfterRemove(shown.id); return;
+  }
+  if (!await askConfirm(`Clear ${p.name ? p.name + '\'s' : 'this project\'s'} conversation? The tasks it started are kept.`)) return;
+  await api(`/api/projects/${encodeURIComponent(pid)}/chat`, { method: 'DELETE' });
+  toast('Conversation cleared');
+  if (page === 'project' && pageArg === pid) { pjConvsFetch(); if (chatCur && chatWant === p.conv_chat_id) chatLoad(chatCur.id); }
+}
+// A conversation went away (deleted or moved out of the project): drop it from the list and, when it was the one on
+// screen, show the most recent of those left.
+function pjConvAfterRemove(id) {
+  pjConvs = pjConvs.filter((c) => c.id !== id);
+  if (page === 'project' && chatWant === id) { pjConvSel = ''; location.hash = '#/projects/' + pageArg; pjConvSync(); }
+  pjConvsFetch();
+}
 async function projectAction(act, el) {
   const id = el.dataset.id;
   const f = (k) => document.querySelector(`#modal-pj-settings [data-pf="${k}"][data-id="${id}"]`) || document.querySelector(`[data-pf="${k}"][data-id="${id}"]`);
@@ -601,7 +703,8 @@ async function projPageAction(act, el) {
       if (curTask() !== el.dataset.task) location.hash = matchMedia('(min-width: 1100px)').matches ? want : '#/tasks/' + el.dataset.task;
       return;
     }
-    case 'proj-show-resolved': pjResolvedOpen = !pjResolvedOpen; if (pjResolvedOpen) pjFolded.delete('resolved'); else pjFolded.add('resolved'); renderProjectPage(); return;
+    case 'proj-convs-all': pjConvAll = !pjConvAll; renderProjectPage(); return;
+    case 'proj-conv-new': location.hash = `#/projects/${pageArg}/chats/new`; if (!pjWide()) setPjPanel(false); return;
     case 'proj-fold': pjFold(el.dataset.key); renderProjectPage(); return;
     case 'proj-arts-scroll': { const r = $('pj-arts-row'); if (r) r.scrollBy({ left: +el.dataset.dir * Math.max(160, r.clientWidth - 80), behavior: 'smooth' }); return; }
     case 'proj-stash': $('pj-stash-btn').click(); return;
@@ -639,11 +742,9 @@ async function projPageAction(act, el) {
       tasksSeq++; renderProjectPage(); toast(`Resolved ${list.length} task${list.length === 1 ? '' : 's'}`); return;
     }
     case 'proj-file': await openPjFile(el.dataset.path, el.dataset.line); return;
+    case 'proj-chat-stop': if (chatCur) { await post(`/api/chats/${encodeURIComponent(chatCur.id)}/stop`); chatLoad(chatCur.id); } return;
     case 'proj-open-stash': $('pj-stash-btn').click(); return;
-    case 'proj-chat-stop': await post(`/api/projects/${encodeURIComponent(pageArg)}/chat/stop`); pjFetch(true); return;
-    case 'proj-chat-clear':
-      if (!await askConfirm('Clear this project\'s conversation? The tasks it started are kept.')) return;
-      await api(`/api/projects/${encodeURIComponent(id)}/chat`, { method: 'DELETE' }); close('modal-pj-settings'); toast('Conversation cleared'); pjFetch(true); return;
+    case 'proj-chat-clear': close('modal-pj-settings'); await pjClearConv(id); return;
     case 'proj-edit': close('modal-pj-files'); openPjEdit(id); return;
     case 'proj-edit-save': {
       const name = $('pj-edit-name').value.trim();
@@ -781,10 +882,7 @@ async function runProjMenu(act, id) {
       case 'copy-link': await copyText(projLink(id)); toast('Link copied'); break;
       case 'download': location.href = `/api/projects/${encodeURIComponent(id)}/download`; break;
       case 'settings': openPjSettings(id); break;
-      case 'clear-chat':
-        if (!await askConfirm(`Clear ${p.name}'s conversation? The tasks it started are kept.`)) return;
-        await api(`/api/projects/${encodeURIComponent(id)}/chat`, { method: 'DELETE' }); toast('Conversation cleared');
-        if (page === 'project' && pageArg === id) pjFetch(true); break;
+      case 'clear-chat': await pjClearConv(id); break;
       case 'delete': await deleteProject(id); break;
     }
   } catch (e) { toast(e.message, 4000); }
@@ -857,5 +955,29 @@ function openPjDup(p) {
   window.addEventListener('hashchange', () => closeProjMenu(false));
 })();
 
+// The conversation rows in the Threads pane and the ⋯ in the conversation's header open the chat menu (groups.js).
+$('pj-threads').addEventListener('click', (e) => {
+  if (!pjWide() && e.target.closest('.pj-conv-row .pj-row-main')) setPjPanel(false); // on a phone the pane is a sheet: choosing a conversation closes it
+  const b = e.target.closest('[data-chat-menu]');
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  if (ctxChat === b.dataset.chatMenu) { closeGroupCtx(); return; }
+  const r = b.getBoundingClientRect();
+  openChatMenu(b.dataset.chatMenu, Math.max(6, r.right - 200), r.bottom + 4, b);
+});
+$('pj-threads').addEventListener('contextmenu', (e) => {
+  const row = e.target.closest('.pj-conv-row');
+  if (!row) return;
+  e.preventDefault();
+  openChatMenu(row.dataset.chat, e.clientX, e.clientY, row.querySelector('.pj-row-main'));
+});
+longPress($('pj-threads'), '.pj-conv-row', (el, x, y) => openChatMenu(el.dataset.chat, x, y, el.querySelector('.pj-row-main')));
+$('chat-more').addEventListener('click', (e) => {
+  e.preventDefault(); e.stopPropagation();
+  if (!chatCur) return;
+  if (ctxChat === chatCur.id) { closeGroupCtx(); return; }
+  const r = $('chat-more').getBoundingClientRect();
+  openChatMenu(chatCur.id, Math.max(6, r.right - 210), r.bottom + 4, $('chat-more'));
+});
 function pjCloseAddMenu() { const d = document.querySelector('.pj-addctx'); if (d) d.open = false; }
 $('pj-ctx-file').onchange = async (e) => { const f = e.target.files; try { await pjStashUpload(f); } catch (x) { toast(x.message, 5000); } e.target.value = ''; };
