@@ -1825,3 +1825,7 @@ details.menu > summary { border: 1px solid var(--line); border-radius: 8px; padd
 .fb-table table { border-collapse: collapse; font-size: 12.5px; }
 .fb-table th, .fb-table td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; white-space: nowrap; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
 .fb-table th { position: sticky; top: 0; background: var(--panel); }
+
+/* Drop target while files are dragged over the project pane or the Artifacts dialog. */
+.drop-on { outline: 2px dashed var(--accent, #4f8cff); outline-offset: -6px; }
+.pj-panel.drop-on::after { content: 'Drop to upload to Artifacts'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--bg) 85%, transparent); font-weight: 600; pointer-events: none; }

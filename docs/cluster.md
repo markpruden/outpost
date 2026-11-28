@@ -121,6 +121,10 @@ call already running finishes) and its idle unload drops to 10 seconds, so its m
 memory is free. The model loads again on the first call once the hours start. Chat and the `/v1` API
 leave it alone too. The card shows *Off hours* while it is outside them.
 
+**Last seen.** An offline node shows when it was last connected ("seen 3 hours ago"). The time is saved in
+`nodes.json` (on disconnect, and every few minutes while the node is connected), so it survives controller
+restarts and reboots. "Never connected" now means the node really has not connected since it joined.
+
 **Wake-on-LAN.** Nodes report their network cards' MAC addresses. An offline node that has reported one
 gets a **Wake** button. With *Settings → Wake sleeping nodes* on, the controller also wakes offline nodes
 (inside their hours, with the task's label if any, at most once per 10 minutes each) when a task is

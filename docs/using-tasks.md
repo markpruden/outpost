@@ -476,7 +476,7 @@ something in them is waiting on you; the pin is stored on the controller, so it 
   than four). Result files and build outputs open the task's file browser in the panel, as folders and
   files, instead of downloading a zip (the zip stays a button there). **Upload…** opens the project's
   own Artifacts: **Upload files** or **Upload folder** (a folder keeps its subfolders), click a file to
-  open it, and ✕ beside a file or folder (or **Delete** above an open file) deletes it after you confirm.
+  open it (or **drag files or a whole folder from your computer onto the Threads panel**, or onto the open Artifacts window, to upload them), and ✕ beside a file or folder (or **Delete** above an open file) deletes it after you confirm.
   Uploads are kept on the controller in the project's folder (`artifacts/`, beside `repo/`), never on a
   node; they are not given to tasks (put files tasks should read in the project's Stash or its files),
   and they are deleted with the project unless you choose to archive them. One upload can be up to 4 GB and must leave 512 MB free on the
