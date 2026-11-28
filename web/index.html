@@ -684,6 +684,7 @@
             <label class="toggle"><input type="radio" name="tok-scope" value="chat" checked> <span><b>Chat only</b>: the OpenAI-compatible API (<code>/v1/chat/completions</code>, <code>/v1/models</code>) and nothing else. For editors and chat apps.</span></label>
             <label class="toggle"><input type="radio" name="tok-scope" value="images"> <span><b>Chat and pictures</b>: like chat only, plus <code>/v1/images/generations</code> while the image API is on (Settings, Pictures).</span></label>
             <label class="toggle"><input type="radio" name="tok-scope" value="mcp"> <span><b>MCP only</b>: the MCP server (<code>/mcp</code>) and nothing else. For Claude Code, Claude Desktop and other MCP clients.</span></label>
+            <label class="toggle"><input type="radio" name="tok-scope" value="run"> <span><b>Run saved tasks</b>: start a <b>Headless</b> saved task and read how it is going (<code>POST /api/templates/&lt;id&gt;/run</code>, <code>GET …/status</code>) and nothing else. For webhooks, cron and CI.</span></label>
             <label class="toggle"><input type="radio" name="tok-scope" value="full"> <span><b>Full access</b>: everything you can do signed in, including settings, nodes, updates and tasks. Only for your own scripts.</span></label>
           </div>
           <div class="note hidden u6" id="tok-new"></div>
@@ -1064,6 +1065,7 @@
     <input id="tpl-edit-name" autocomplete="off">
     <label for="tpl-edit-prompt">Request</label>
     <textarea id="tpl-edit-prompt" rows="8"></textarea>
+    <label class="toggle"><input type="checkbox" id="tpl-edit-headless"> <span><b>Headless</b>: runs without you. The planner asks no questions and the plan approves itself. Plans on a node (never a paid planner), commands run only on nodes with a sandbox on, and a run stops after 4 hours. A <b>Run saved tasks</b> token can start it.</span></label>
     <p class="hint">The options (planner, project, peer review, fix rounds, node label) stay as saved. To change them, use <b>Edit first in New task</b> and save it again.</p>
     <div class="error-msg hidden" id="tpl-edit-err"></div>
     <div class="modal-foot"><button data-close>Cancel</button><button class="primary" id="tpl-edit-go">Save</button></div>

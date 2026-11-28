@@ -48,7 +48,7 @@ func (c *Controller) authAPI(h http.HandlerFunc) http.HandlerFunc {
 			}
 		}
 		if !ok {
-			if i := c.bearerAPIToken(r); i >= 0 && c.apiTokens[i].Scope != "mcp" {
+			if i := c.bearerAPIToken(r); i >= 0 && c.apiTokens[i].Scope != "mcp" && c.apiTokens[i].Scope != "run" {
 				ok = true
 				if time.Since(c.apiTokens[i].LastUsed) > time.Minute {
 					c.apiTokens[i].LastUsed = time.Now()

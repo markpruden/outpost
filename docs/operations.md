@@ -156,7 +156,8 @@ cannot keep it crash-looping. Restart it after fixing the cause (see the control
 is blocked for 15 minutes (the page shows the failure count). It lists every signed-in browser with
 Sign out, and **Sign out everywhere**. **API tokens** are named, shown once, stored hashed, and sent
 as `Authorization: Bearer opt_…`. When you create one you choose what it can do: **Chat only** (the
-default), **Chat and pictures**, **MCP only**, or **Full access**, which reaches any `/api/` endpoint a
+default), **Chat and pictures**, **MCP only**, **Run saved tasks** (starts a Headless saved task and reads its status, nothing else;
+see [using tasks](using-tasks.md)), or **Full access**, which reaches any `/api/` endpoint a
 script needs (state, tasks and so on). Full-access tokens carry an amber **full access** label in the list.
 Tokens cannot manage tokens, sessions, the certificate or backups; only a browser sign-in can. A token
 made with **Chat only** works only on the OpenAI-compatible `/v1/` API (see [Chat and the API](chat-and-api.md)).

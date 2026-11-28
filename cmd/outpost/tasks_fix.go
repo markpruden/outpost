@@ -46,7 +46,7 @@ func (c *Controller) testAndFix(ctx context.Context, t *Task) {
 		if ctx.Err() != nil {
 			return
 		}
-		execs := c.execNodes()
+		execs := c.execNodesFor(t)
 		if len(execs) == 0 {
 			t.mu.Lock()
 			t.TestStatus = "skipped"
