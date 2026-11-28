@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -37,7 +38,8 @@ type apiToken struct {
 	Created  time.Time `json:"created"`
 	LastUsed time.Time `json:"last_used,omitempty"`
 	// Scope "chat" limits the token to the OpenAI-compatible /v1 API (and the Anthropic and Ollama ones); "images" adds /v1/images;
-	// "mcp" allows only the MCP endpoint (mcp_server.go); "" is full access.
+	// "mcp" allows only the MCP endpoint (mcp_server.go); "run" only starts headless saved tasks and reads their
+	// status (templates.go); "" is full access.
 	Scope string `json:"scope,omitempty"`
 }
 
@@ -134,6 +136,37 @@ func (c *Controller) bearerAPIToken(r *http.Request) int {
 func (c *Controller) authSession(h http.HandlerFunc) http.HandlerFunc {
 	return c.authWith(h, false)
 }
+
+// authRun is auth that also accepts a token with scope "run" (only the saved-task run and status routes use it).
+func (c *Controller) authRun(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if c.runTokenOK(r) {
+			h(w, r)
+			return
+		}
+		c.auth(h)(w, r)
+	}
+}
+
+type runTokenKey struct{}
+
+// runTokenOK accepts a bearer token with scope "run" and remembers that on the request.
+func (c *Controller) runTokenOK(r *http.Request) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	i := c.bearerAPIToken(r)
+	if i < 0 || c.apiTokens[i].Scope != "run" {
+		return false
+	}
+	if time.Since(c.apiTokens[i].LastUsed) > time.Minute {
+		c.apiTokens[i].LastUsed = time.Now()
+		c.saveAPITokensLocked()
+	}
+	*r = *r.WithContext(context.WithValue(r.Context(), runTokenKey{}, true))
+	return true
+}
+
+func viaRunToken(r *http.Request) bool { v, _ := r.Context().Value(runTokenKey{}).(bool); return v }
 
 func (c *Controller) auth(h http.HandlerFunc) http.HandlerFunc { return c.authWith(h, true) }
 
@@ -282,8 +315,8 @@ func (c *Controller) handleNewAPIToken(w http.ResponseWriter, r *http.Request) {
 	var req struct{ Name, Scope string }
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	name := strings.TrimSpace(req.Name)
-	if req.Scope != "" && req.Scope != "chat" && req.Scope != "images" && req.Scope != "mcp" {
-		writeJSON(w, 400, map[string]string{"error": "scope must be empty (full access), chat, images or mcp"})
+	if req.Scope != "" && req.Scope != "chat" && req.Scope != "images" && req.Scope != "mcp" && req.Scope != "run" {
+		writeJSON(w, 400, map[string]string{"error": "scope must be empty (full access), chat, images, mcp or run"})
 		return
 	}
 	if name == "" || len(name) > 60 {

@@ -54,6 +54,7 @@ function runTook(r) {
 function runNote(r) {
   const parts = [];
   if (r.kind === 'manual') parts.push('Run now.');
+  if (r.kind === 'trigger') parts.push('Started by a token.');
   if (r.note) parts.push(esc(r.note));
   if (r.task && r.status) parts.push(`<a href="#/tasks/${esc(r.task)}">Open task</a>`);
   return parts.join(' ');
@@ -81,7 +82,7 @@ function scRow(t) {
   else if (state.schedules_paused) when = '<b>–</b>all paused';
   else if (t.next_run) { const far = farFromNow(t.next_run), you = yourTime(t.next_run, far); when = `<b>${esc(ctlTime(t.next_run, far))}</b>next run${you ? ` <span class="muted" title="The same moment on this browser's clock">· your time ${esc(you)}</span>` : ''}`; }
   const cls = ['sc-row', scOpen.has(t.id) ? 'open' : '', !t.schedule || t.paused ? 'paused' : '', t.schedule && !t.paused && tplWarn(t) ? 'warnrow' : ''].filter(Boolean).join(' ');
-  const pills = (t.paused ? pill('cancelled', 'Paused') + ' ' : '') + (t.schedule ? `<span class="pill st-ready">${esc(schedText(t))}</span>` : '');
+  const pills = (t.headless ? `<span class="pill st-ready" title="Runs without you: no questions, the plan approves itself">Headless</span> ` : '') + (t.paused ? pill('cancelled', 'Paused') + ' ' : '') + (t.schedule ? `<span class="pill st-ready">${esc(schedText(t))}</span>` : '');
   const second = t.schedule ? (t.paused ? `<button class="small primary" data-act="sc-resume" data-id="${esc(t.id)}">Resume</button>` : `<button class="small" data-act="sc-pause" data-id="${esc(t.id)}">Pause</button>`)
     : `<button class="small" data-act="tpl-sched" data-id="${esc(t.id)}">Schedule…</button>`;
   const runCls = t.paused || !t.schedule ? 'small' : 'small primary';
@@ -103,7 +104,7 @@ function scRow(t) {
     : '<p class="hint">No runs yet.</p>';
   return row + `<div class="sc-detail">
     <div><h3>Request</h3><div class="sc-req">${esc(r.prompt)}</div><div class="sc-opts">${opts.join(' · ')}</div>
-      <div class="btns"><button class="small" data-act="sc-edit" data-id="${esc(t.id)}">Edit request…</button><button class="small" data-act="tpl-sched" data-id="${esc(t.id)}">${t.schedule ? 'Edit schedule…' : 'Schedule…'}</button></div></div>
+      ${t.headless ? `<p class="hint">Headless. Run URL: <code>POST ${esc(location.origin)}/api/templates/${esc(t.id)}/run</code> with a <b>Run saved tasks</b> token.</p>` : ''}<div class="btns"><button class="small" data-act="sc-edit" data-id="${esc(t.id)}">Edit request…</button><button class="small" data-act="tpl-sched" data-id="${esc(t.id)}">${t.schedule ? 'Edit schedule…' : 'Schedule…'}</button></div></div>
     <div><h3>Last runs</h3>${hist}</div>
   </div>`;
 }
@@ -161,14 +162,14 @@ let editTpl = null;
 function openTplEdit(id) {
   editTpl = (state.templates || []).find((t) => t.id === id);
   if (!editTpl) return;
-  $('tpl-edit-name').value = editTpl.name; $('tpl-edit-prompt').value = editTpl.request.prompt;
+  $('tpl-edit-name').value = editTpl.name; $('tpl-edit-prompt').value = editTpl.request.prompt; $('tpl-edit-headless').checked = !!editTpl.headless;
   $('tpl-edit-err').classList.add('hidden');
   open('modal-tpl-edit');
   setTimeout(() => $('tpl-edit-prompt').focus(), 0);
 }
 $('tpl-edit-go').onclick = async () => {
   try {
-    await post(`/api/templates/${editTpl.id}`, { name: $('tpl-edit-name').value, request: { ...editTpl.request, prompt: $('tpl-edit-prompt').value } });
+    await post(`/api/templates/${editTpl.id}`, { name: $('tpl-edit-name').value, request: { ...editTpl.request, prompt: $('tpl-edit-prompt').value }, headless: $('tpl-edit-headless').checked });
     close('modal-tpl-edit'); toast('Saved'); refresh();
   } catch (e) { $('tpl-edit-err').textContent = e.message; $('tpl-edit-err').classList.remove('hidden'); }
 };

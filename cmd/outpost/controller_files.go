@@ -270,7 +270,7 @@ func (c *Controller) runBuild(ctx context.Context, t *Task) bool {
 	if setup := strings.TrimSpace(plan.SetupCommand); setup != "" {
 		chain = setup + " && " + build
 	}
-	execs := c.execNodes()
+	execs := c.execNodesFor(t)
 	if len(execs) == 0 {
 		return skip("No node has exec enabled, so the build was not run.")
 	}

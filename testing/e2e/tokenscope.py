@@ -30,13 +30,15 @@ async def main():
         b = await p.chromium.launch(executable_path=os.environ.get("OUTPOST_CHROMIUM") or os.environ.get("PW_CHROMIUM") or None)
         ctx, pg, errs = await open_security(b, "light", 1440, 1000)
         assert await pg.locator("#tok-chat, #tok-mcp, #tok-img").count() == 0, "the old checkboxes are gone"
-        assert await pg.locator("input[name=tok-scope]").count() == 4
+        assert await pg.locator("input[name=tok-scope]").count() == 5
         assert await pg.locator("input[name=tok-scope][value=chat]").is_checked(), "Chat only is the default"
         await create(pg, "e2e default", None)
         await create(pg, "e2e full", "full")
         assert await pg.locator("input[name=tok-scope][value=chat]").is_checked(), "the choice resets to Chat only"
         await create(pg, "e2e mcp", "mcp")
         await create(pg, "e2e pics", "images")
+        await create(pg, "e2e run", "run")
+        assert "Run saved tasks" in await pg.locator("#tok-new").inner_text() or "api/templates" in await pg.locator("#tok-new").inner_text(), "the run token shows how to call it"
         toks = await pg.evaluate("fetch('/api/apitokens').then(r=>r.json())")
         toks = toks.get("tokens", toks) if isinstance(toks, dict) else toks
         got = {t["name"]: t.get("scope", "") for t in toks}
@@ -44,6 +46,7 @@ async def main():
         assert got.get("e2e full", "x") == "", got
         assert got.get("e2e mcp") == "mcp", got
         assert got.get("e2e pics") == "images", got
+        assert got.get("e2e run") == "run", got
         row = pg.locator("#tokens-list .rowline", has_text="e2e full")
         assert await row.locator(".pill", has_text="full access").count() == 1, "full-access tokens are labelled"
         assert await pg.locator("#tokens-list .rowline", has_text="e2e default").locator(".pill", has_text="full access").count() == 0

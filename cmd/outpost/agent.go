@@ -357,7 +357,7 @@ func (a *agentRun) run(ctx context.Context, command string) string {
 		return "error: command is required"
 	}
 	c, t := a.c, a.t
-	execs := c.execNodes()
+	execs := c.execNodesFor(t)
 	if len(execs) == 0 {
 		return "error: no node has exec enabled, so commands cannot run. Reason from the code instead."
 	}
