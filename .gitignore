@@ -11,3 +11,5 @@ testing/e2e/run/
 *.log
 *.pid
 __pycache__/
+/cmd/outpost/task.json
+/cmd/outpost/task.json.bak
