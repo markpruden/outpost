@@ -39,7 +39,7 @@ func negotiateProtocol(theirs []int) (int, bool) {
 
 // Version is a constant so buildInfo lands in the binary as one literal the controller
 // can find when you upload a release.
-const Version = "0.8.0"
+const Version = "1.0.0"
 
 const buildInfo = "OUTPOST_BUILD_INFO|" + Version + "|"
 

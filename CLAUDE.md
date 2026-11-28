@@ -2,7 +2,7 @@
 
 Self-hosted distributed local-AI cluster, written in Go as **one binary** with two modes:
 `controller` (web UI, planning, job dispatch, model and release storage) and `node` (runs
-llama.cpp, runs commands, keeps no job data). Base version: **0.8.0** (`const Version` in `cmd/outpost/proto.go`; releases are stamped higher by CI, see below).
+llama.cpp, runs commands, keeps no job data). Base version: **1.0.0** (set by hand 2026-11-28, at the owner's say-so, before multi-user work) (`const Version` in `cmd/outpost/proto.go`; releases are stamped higher by CI, see below).
 
 The owner uses it to fan programming tasks out across their home machines, as a supplement to Claude Code.
 You describe a task in the web UI; a planner (Claude API, or a local model on a node) splits it into
