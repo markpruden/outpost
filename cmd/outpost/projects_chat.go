@@ -31,6 +31,7 @@ type ProjectChatMsg struct {
 	Role  string    `json:"role"` // user | assistant
 	Text  string    `json:"text,omitempty"`
 	Time  time.Time `json:"time"`
+	Auto  string    `json:"auto,omitempty"`  // a message from Outpost, not the owner (projects_continue.go)
 	Tasks []string  `json:"tasks,omitempty"` // tasks this message started
 	Who   string    `json:"who,omitempty"`   // assistant: the model or node that answered
 	Error string    `json:"error,omitempty"`
@@ -731,6 +732,8 @@ A complete request for the planner: what to change and why, the files involved, 
 [/start task]
 
 Rules: start a task only when the owner asks for work or agrees to your suggestion; answer questions directly. One task per independent piece of work, at most %d; they run one at a time in the order you write them. Do not start a task that repeats one that is already waiting or working. Keep answers short and plain, and say what you started.
+
+When a task or research you started finishes, a message marked "From Outpost" tells you what came out of it. Then keep working on the owner's original request with it: start the next step if it is clear, and ask the owner only if a real decision is left. Do not just repeat the findings back.
 `, name, maxChatTasks)
 	if test != "" {
 		fmt.Fprintf(&b, "\nTest command: %s\n", test)

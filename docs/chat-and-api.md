@@ -390,6 +390,68 @@ or OpenRouter planners** (off: only local planners, `auto` or `node:<id>`, so a 
 and **Let MCP approve plans** (off: plans wait for you in the web UI, and the tool is told to poll). The
 tools call the same code as the web UI, so caps, project rules and the one-task-per-project queue apply.
 An MCP-only token works on `/mcp` and nothing else; chat-only tokens do not work on `/mcp`.
+
+### Use Outpost from your editor
+
+Outpost has no editor plugins. Editors that can talk to an MCP server or an OpenAI-compatible model
+already reach it with the two addresses above, so there is nothing extra to install or keep updated.
+Make two tokens in Settings → API tokens, one **MCP only** and one **Chat only**, or use one **Full
+access** token if you prefer (a Full access token is more than an editor needs). The examples use the
+example address `192.0.2.10`; take the real addresses from **Connect a tool**, which has Copy buttons.
+
+| You want | Use | Address |
+| --- | --- | --- |
+| The editor's agent hands a task to the cluster, checks on it, reads the files | MCP | `https://192.0.2.10:8443/mcp` |
+| The editor's chat or completion uses your nodes as its model | OpenAI API | `https://192.0.2.10:8443/v1`, model `auto` |
+
+**VS Code** (agent mode). Add the MCP server to `.vscode/mcp.json`, or run *MCP: Add Server* and choose HTTP:
+
+```json
+{ "servers": { "outpost": { "type": "http", "url": "https://192.0.2.10:8443/mcp",
+    "headers": { "Authorization": "Bearer <token>" } } } }
+```
+
+**Cursor.** Add it to `~/.cursor/mcp.json` (or the project's `.cursor/mcp.json`):
+
+```json
+{ "mcpServers": { "outpost": { "url": "https://192.0.2.10:8443/mcp",
+    "headers": { "Authorization": "Bearer <token>" } } } }
+```
+
+**Continue.** In `config.yaml`, the MCP server and, if you want, the cluster as a model:
+
+```yaml
+mcpServers:
+  - name: outpost
+    type: streamable-http
+    url: https://192.0.2.10:8443/mcp
+    requestOptions:
+      headers:
+        Authorization: Bearer <token>
+models:
+  - name: Outpost
+    provider: openai
+    model: auto
+    apiBase: https://192.0.2.10:8443/v1
+    apiKey: <chat-only token>
+```
+
+**Claude Code.** The `claude mcp add` line above, or point Claude Code itself at the cluster with the
+Anthropic address (*The Anthropic and Ollama APIs*).
+
+**JetBrains IDEs.** In the AI Assistant settings add an OpenAI-compatible model with the `/v1` address, the
+Chat only token and the model `auto`, and add `/mcp` with the Authorization header as an MCP server where
+your IDE version offers one. The menu names change between releases, so follow the IDE's own help for where
+they are.
+
+Things to know. The controller's certificate is self-signed: Node-based editors need it trusted
+(`NODE_EXTRA_CA_CERTS=/path/to/controller.pem`) or your own certificate installed. A task started over MCP
+uses local planners unless you turned on the Claude and OpenRouter setting, and waits for you to approve
+the plan unless you allowed MCP to approve, so start with `cluster_status` to see whether nodes are free.
+Editors that send long prompts or many tools do better with a large local model.
+
+**Untested:** all of the editor configs above. The field names follow each editor's documentation and may
+have changed in your version; the server side is the same `/mcp` and `/v1` endpoints tested elsewhere.
 **Untested:** real Claude Code and Claude Desktop; tested with Go tests and curl on the local test rig.
 
 ## Claude usage and the spending cap

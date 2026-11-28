@@ -46,7 +46,7 @@ func (c *Controller) testAndFix(ctx context.Context, t *Task) {
 		if ctx.Err() != nil {
 			return
 		}
-		execs := c.execNodes()
+		execs := c.execNodesFor(t)
 		if len(execs) == 0 {
 			t.mu.Lock()
 			t.TestStatus = "skipped"
@@ -287,6 +287,7 @@ func (c *Controller) finishTask(t *Task) {
 	t.addMsgLocked(TaskMessage{Role: "assistant", Kind: "result", Text: resultText(t), Files: sortedCopy(t.Touched), Stats: stats})
 	t.mu.Unlock()
 	c.notifyTask(t, "done", "Finished. Download the result from the task page.")
+	go c.taskFinishedToChat(t)
 	t.mu.Lock()
 	learn := t.ProjectID != "" && t.TestStatus == "failing"
 	t.mu.Unlock()

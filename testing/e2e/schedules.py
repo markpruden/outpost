@@ -116,6 +116,14 @@ async def main():
         t = [x for x in await pg.evaluate(GET, "/api/templates") if x["id"] == a["id"]][0]
         assert t["request"]["prompt"] == "Bump every dependency and run the tests" and t["request"]["node_label"] == "gpu", t["request"]
 
+        # Headless: ticking the box in the edit dialog saves it and shows the pill and the run URL
+        await pg.click(f"{row(a)} [data-act=sc-menu]"); await pg.click("#sc-ctx [data-act=sc-edit]")
+        await pg.check("#tpl-edit-headless"); await pg.click("#tpl-edit-go")
+        await pg.wait_for_selector("#modal-tpl-edit.hidden", state="attached")
+        t = [x for x in await pg.evaluate(GET, "/api/templates") if x["id"] == a["id"]][0]
+        assert t.get("headless") is True, t
+        await pg.wait_for_selector(f"{row(a)} .pill:has-text('Headless')")
+
         # Duplicate (unscheduled copy), Remove schedule, Escape closes the menu
         await pg.click(f"{row(a)} [data-act=sc-menu]"); await pg.click("#sc-ctx [data-act=sc-dup]")
         await pg.wait_for_selector(".sc-name:has-text('Nightly dependency bump (copy)')")

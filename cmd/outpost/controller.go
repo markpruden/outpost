@@ -51,6 +51,7 @@ type NodeRec struct {
 	Labels      []string      `json:"labels,omitempty"`        // owner's tags ("gpu", "office"); tasks can ask for one (labels.go)
 	Hours       *WorkHours    `json:"hours,omitempty"`         // when the node takes work; nil = always (hours.go)
 	LastAddr    string        `json:"last_addr,omitempty"`     // address it last connected from, for Wake-on-LAN (wol.go)
+	LastSeenAt  *time.Time    `json:"last_seen_at,omitempty"`  // when it was last connected; survives controller restarts (see lastSeenOfLocked)
 	// StorageLimitGB is the most disk (GiB) Outpost may use on the node; 0 = no limit (node_storage.go).
 	StorageLimitGB float64 `json:"storage_limit_gb,omitempty"`
 	// TargetTPS is the generation speed (tok/s) the owner wants from this node; steers Recommended and Pick best. 0 = default (8).

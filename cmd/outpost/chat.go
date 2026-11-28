@@ -65,7 +65,9 @@ type ChatMsg struct {
 	Question string   `json:"question,omitempty"`
 	Saved    string   `json:"saved,omitempty"`
 	Cost     float64  `json:"cost_usd,omitempty"`
-	research string   // the research question this answer asked for, started after it is saved
+	// Auto marks a message Outpost wrote on the owner's behalf (a task or research finished, projects_continue.go): the label shown instead of the text.
+	Auto     string `json:"auto,omitempty"`
+	research string // the research question this answer asked for, started after it is saved
 }
 
 type Chat struct {

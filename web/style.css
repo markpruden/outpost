@@ -1010,6 +1010,7 @@ textarea.fb-editor { font-family: var(--mono); font-size: 12.5px; width: 100%; m
 .pj-conv-row .pj-row-t.pj-1 { -webkit-line-clamp: 1; }
 .pj-conv-row.menu-open .pj-rb, .pj-conv-row:focus-within .pj-rb { visibility: visible; }
 @media (hover: none) { .pj-conv-row .pj-rb { visibility: visible; } }
+.pj-auto { align-self: center; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border, #8884); padding-top: 4px; margin: 4px 0; text-align: center; }
 .pj-tcard { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 10px; align-items: start; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 13px; }
 .pj-tcard .sico { margin-top: 2px; }
 .pj-tcard.resolved { opacity: .7; }
@@ -1818,3 +1819,7 @@ div.working .w-what { color: var(--work); font-weight: 600; }
 .fb-table table { border-collapse: collapse; font-size: 12.5px; }
 .fb-table th, .fb-table td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; white-space: nowrap; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
 .fb-table th { position: sticky; top: 0; background: var(--panel); }
+
+/* Drop target while files are dragged over the project pane or the Artifacts dialog. */
+.drop-on { outline: 2px dashed var(--accent, #4f8cff); outline-offset: -6px; }
+.pj-panel.drop-on::after { content: 'Drop to upload to Artifacts'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--bg) 85%, transparent); font-weight: 600; pointer-events: none; }

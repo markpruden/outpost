@@ -73,6 +73,7 @@ type Template struct {
 	LastTask string     `json:"last_task,omitempty"`
 	LastNote string     `json:"last_note,omitempty"` // why the last scheduled run did not start, or started late
 	Paused   *time.Time `json:"paused,omitempty"`    // the schedule is kept but does not run; when it was paused
+	Headless bool       `json:"headless,omitempty"`  // every run, scheduled or started by hand or a token, is unattended: no questions, the plan approves itself
 	Runs     []TplRun   `json:"runs,omitempty"`      // the last maxTplRuns runs, newest first
 
 	lateFrom time.Time // memory only: a run missed while the controller was off, caught up by runDue
@@ -283,7 +284,7 @@ func (c *Controller) scheduleAllowed(req createReq) error {
 		p = "auto" // the stock default without a key: a schedule plans on a node
 	}
 	if isCloudPlanner(p) || p == "auto_api" {
-		return errors.New("a schedule runs without you, so it must plan on a node: pick a node (or Auto) as the planner, not Claude or OpenRouter")
+		return errors.New("a schedule or headless task runs without you, so it must plan on a node: pick a node (or Auto) as the planner, not Claude or OpenRouter")
 	}
 	return nil
 }
@@ -297,7 +298,8 @@ func (c *Controller) templateRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/templates", c.auth(c.handleNewTemplate))
 	mux.HandleFunc("POST /api/templates/{id}", c.auth(c.handleEditTemplate))
 	mux.HandleFunc("DELETE /api/templates/{id}", c.auth(c.handleDeleteTemplate))
-	mux.HandleFunc("POST /api/templates/{id}/run", c.auth(c.handleRunTemplate))
+	mux.HandleFunc("POST /api/templates/{id}/run", c.authRun(c.handleRunTemplate))
+	mux.HandleFunc("GET /api/templates/{id}/status", c.authRun(c.handleTemplateStatus))
 	mux.HandleFunc("POST /api/schedules/pause", c.auth(c.handlePauseAll))
 }
 
@@ -306,6 +308,7 @@ func (c *Controller) handleNewTemplate(w http.ResponseWriter, r *http.Request) {
 		Name     string    `json:"name"`
 		Request  createReq `json:"request"`
 		Schedule *Schedule `json:"schedule"`
+		Headless bool      `json:"headless"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
 		writeJSON(w, 400, map[string]string{"error": "bad json"})
@@ -322,7 +325,13 @@ func (c *Controller) handleNewTemplate(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = firstLine(req.Request.Prompt, 60)
 	}
-	t := &Template{ID: newID("tpl"), Name: name, Request: req.Request, Created: time.Now()}
+	t := &Template{ID: newID("tpl"), Name: name, Request: req.Request, Created: time.Now(), Headless: req.Headless}
+	if req.Headless {
+		if err := c.scheduleAllowed(t.Request); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+	}
 	if err := c.setSchedule(t, req.Schedule); err != nil {
 		writeJSON(w, 400, map[string]string{"error": err.Error()})
 		return
@@ -362,6 +371,7 @@ func (c *Controller) handleEditTemplate(w http.ResponseWriter, r *http.Request) 
 		Schedule *Schedule  `json:"schedule"` // {"every": ""} clears it
 		Request  *createReq `json:"request"`  // replaces the saved request
 		Paused   *bool      `json:"paused"`   // pause or resume the schedule
+		Headless *bool      `json:"headless"` // runs unattended (see Template.Headless)
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
 		writeJSON(w, 400, map[string]string{"error": "bad json"})
@@ -401,6 +411,15 @@ func (c *Controller) handleEditTemplate(w http.ResponseWriter, r *http.Request) 
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
+	}
+	if req.Headless != nil {
+		if *req.Headless {
+			if err := c.scheduleAllowed(cp.Request); err != nil {
+				writeJSON(w, 400, map[string]string{"error": err.Error()})
+				return
+			}
+		}
+		cp.Headless = *req.Headless
 	}
 	if req.Paused != nil {
 		switch {
@@ -445,15 +464,32 @@ func (c *Controller) handleRunTemplate(w http.ResponseWriter, r *http.Request) {
 	c.mu.Lock()
 	t := c.templateLocked(r.PathValue("id"))
 	var req createReq
+	var last string
+	headless := false
 	if t != nil {
-		req = t.Request
+		req, last, headless = t.Request, t.LastTask, t.Headless
 	}
 	c.mu.Unlock()
 	if t == nil {
 		writeJSON(w, 404, map[string]string{"error": "no such saved task"})
 		return
 	}
-	tk, code, err := c.createTask(req, nil, createOpts{Template: t.ID})
+	kind := "manual"
+	if viaRunToken(r) {
+		kind = "trigger"
+	}
+	if viaRunToken(r) && !headless {
+		// A run-only token never starts a task that then waits for a person: it is for unattended work.
+		writeJSON(w, 409, map[string]string{"error": "this saved task is not headless; turn on Headless for it first, or use a full-access token"})
+		return
+	}
+	if headless {
+		if prev := c.getTask(last); prev != nil && taskActive(prev) {
+			writeJSON(w, 409, map[string]string{"error": "the previous run is still going", "task": prev.ID})
+			return
+		}
+	}
+	tk, code, err := c.createTask(req, nil, createOpts{Template: t.ID, Unattended: headless})
 	if err != nil {
 		writeJSON(w, code, map[string]string{"error": err.Error()})
 		return
@@ -462,11 +498,37 @@ func (c *Controller) handleRunTemplate(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	if t := c.templateLocked(t.ID); t != nil { // it may have been deleted meanwhile
 		t.LastRun, t.LastTask, t.LastNote = &now, tk.ID, ""
-		t.addRunLocked(TplRun{At: now, Task: tk.ID, Kind: "manual"})
+		t.addRunLocked(TplRun{At: now, Task: tk.ID, Kind: kind})
 		c.saveTemplatesLocked()
 	}
 	c.mu.Unlock()
 	writeJSON(w, 200, map[string]string{"id": tk.ID})
+}
+
+// handleTemplateStatus tells a script how the saved task's last run is going,
+// without the plan, files or conversation: id, status, test status, result size.
+func (c *Controller) handleTemplateStatus(w http.ResponseWriter, r *http.Request) {
+	c.mu.Lock()
+	t := c.templateLocked(r.PathValue("id"))
+	last := ""
+	if t != nil {
+		last = t.LastTask
+	}
+	c.mu.Unlock()
+	if t == nil {
+		writeJSON(w, 404, map[string]string{"error": "no such saved task"})
+		return
+	}
+	tk := c.getTask(last)
+	if tk == nil {
+		writeJSON(w, 200, map[string]any{"task": "", "status": "never_run"})
+		return
+	}
+	tk.mu.Lock()
+	out := map[string]any{"task": tk.ID, "status": tk.Status, "test_status": tk.TestStatus, "build_status": tk.BuildStatus,
+		"created": tk.Created, "ended": tk.Ended, "result_bytes": tk.ResultBytes}
+	tk.mu.Unlock()
+	writeJSON(w, 200, out)
 }
 
 // runDue starts every scheduled template whose time has come.
@@ -552,6 +614,7 @@ func (c *Controller) templateLoop() {
 		time.Sleep(time.Until(now.Truncate(time.Minute).Add(time.Minute + time.Second)))
 		if !c.safeMode {
 			c.runDue(time.Now())
+			c.stopOverlongUnattended(time.Now())
 		}
 	}
 }

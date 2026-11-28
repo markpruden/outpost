@@ -358,7 +358,7 @@ func (c *Controller) syntaxCheck(ctx context.Context, t *Task, spec PlanSubtask,
 		return true, ""
 	}
 	sort.Strings(need)
-	execs := c.execNodesWith(c.execNodes(), need)
+	execs := c.execNodesWith(c.execNodesFor(t), need)
 	if len(execs) == 0 {
 		return true, "" // nobody can run the check
 	}

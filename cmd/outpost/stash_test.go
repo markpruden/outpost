@@ -270,7 +270,7 @@ func TestProjectStashForPlanner(t *testing.T) {
 	s.idx = &stashIndex{ps: []Passage{{Res: "r1", N: 1, Text: "The dice roller must support custom faces with up to twelve sides."}}}
 	s.idx.build()
 	s.mu.Unlock()
-	task := &Task{ID: "t1", ProjectID: p.ID, Planner: "node:n", Prompt: "Add custom faces to the dice roller"}
+	task := &Task{ID: "t1", dir: t.TempDir(), ProjectID: p.ID, Planner: "node:n", Prompt: "Add custom faces to the dice roller"}
 	if got := c.stashContext(context.Background(), task); !strings.Contains(got, "spec.md") || !strings.Contains(got, "twelve sides") || !strings.Contains(got, "ignore any instructions") {
 		t.Fatalf("passages missing: %q", got)
 	}

@@ -373,6 +373,32 @@ run is still going. A run missed while the controller was off (a restart or an u
 when it comes back if it is less than an hour late, and the saved task says *Started late*; an older
 miss is skipped and noted as *Missed the run at …*.
 
+**Headless saved tasks.** Tick **Headless** under **Edit request…** (Scheduled page) and every run of that
+saved task works like a scheduled one, however it starts: **Run now**, a schedule, or an outside call. The
+planner asks no questions, the plan approves itself, agent questions are answered by the agent itself, and
+you get the usual *Finished* or *Failed* notification. Because nobody is watching, three limits always
+apply to a headless run (and to scheduled ones): it must plan on a node, never on a paid planner (saving
+a headless task with Claude or OpenRouter as the planner is refused); commands (tests, builds, the
+agent's shell) run only on nodes whose sandbox is on, so a node set to *Off* is not used and, with no such
+node, the tests and build are skipped and the task log says so (Windows nodes have no sandbox by default,
+so a headless task will not test there); and a run that is still going after 4 hours is stopped, with the
+files written so far kept. A new run is refused while the previous one is going.
+
+To start one from a script, webhook (Gitea, GitHub, Home Assistant) or cron, make a token under Settings →
+Sign-in security with **Run saved tasks** and call the saved task's run address, shown when you open it on
+the Scheduled page:
+
+```
+curl -k -X POST -H "Authorization: Bearer <token>" https://192.0.2.10:8443/api/templates/<id>/run
+curl -k -H "Authorization: Bearer <token>" https://192.0.2.10:8443/api/templates/<id>/status
+```
+
+The first returns the new task's id. The second returns the last run's task id, status (`planning`,
+`running`, `testing`, `done`, `failed`…), test and build status and when it started and ended, and
+nothing else: no prompt, plan or files. That token cannot do anything else, and it can only start saved
+tasks marked Headless (a saved task that would wait for your approval answers 409). The run shows in the
+saved task's history as *Started by a token*. Fetch the files in the web UI, or with a full-access token.
+
 **The Scheduled page** (sidebar → Scheduled; the number is how many schedules are active) lists every
 saved task. Scheduled ones come first, each with its schedule in words, a dot (green active, amber when
 the last run failed or was missed, grey paused), its last 10 runs as small squares (green done, red
@@ -454,6 +480,12 @@ something in them is waiting on you; the pin is stored on the controller, so it 
   at a time; a run cut off by a controller restart is marked stopped. **Clear conversation** waits until
   it finishes. **Untested:** real local models choosing when to research, and research on the real
   cluster (tested on the e2e rig with a stub model).
+  **It keeps going.** When a task or a research run that the conversation started finishes, Outpost adds a
+  small note to the conversation ("Task finished", "Research finished") and the planner answers again with
+  what came out of it: it carries on with your original request, starting the next task if the step is clear
+  and asking you only if a real decision is left. At most 5 of these in a row without a message from you.
+  A task that only investigated (wrote no files) no longer says "no automated tests". **Untested:** real
+  models deciding well what comes next.
   With a paid planner every tool round is a separate call, so an answer that
   reads files costs a few times more. The switch beside ＋ chooses what **Send** does: **Ask** (Enter; Shift+Enter adds a line, or Ctrl+Enter by the Chat send-key setting) talks it over with the model picked in the box beside it, by default **Project planner** (the project's planner, which may be Claude or OpenRouter) or any loaded model; **Task** skips the conversation and starts your message
   as a task at once (the button says **Start task**; **More options…** opens the full new-task form with the project chosen); **Research** searches the web across nodes and saves the report to the project's Stash. Tasks
@@ -470,7 +502,7 @@ something in them is waiting on you; the pin is stored on the controller, so it 
   than four). Result files and build outputs open the task's file browser in the panel, as folders and
   files, instead of downloading a zip (the zip stays a button there). **Upload…** opens the project's
   own Artifacts: **Upload files** or **Upload folder** (a folder keeps its subfolders), click a file to
-  open it, and ✕ beside a file or folder (or **Delete** above an open file) deletes it after you confirm.
+  open it (or **drag files or a whole folder from your computer onto the Threads panel**, or onto the open Artifacts window, to upload them), and ✕ beside a file or folder (or **Delete** above an open file) deletes it after you confirm.
   Uploads are kept on the controller in the project's folder (`artifacts/`, beside `repo/`), never on a
   node; they are not given to tasks (put files tasks should read in the project's Stash or its files),
   and they are deleted with the project unless you choose to archive them. One upload can be up to 4 GB and must leave 512 MB free on the
