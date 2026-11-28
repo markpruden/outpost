@@ -496,6 +496,8 @@ func resultText(t *Task) string {
 	case "skipped":
 		if t.Plan != nil && t.Plan.TestCommand != "" {
 			s = "Done. The tests were not run because no node has exec enabled."
+		} else if len(t.Touched) == 0 {
+			s = "Done." // an investigation: nothing was written, so there is nothing to test
 		} else {
 			s = "Done. This project has no automated tests."
 		}

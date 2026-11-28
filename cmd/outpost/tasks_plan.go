@@ -520,5 +520,6 @@ func (c *Controller) failTask(t *Task, err error) {
 	t.mu.Unlock()
 	t.setStatus("failed")
 	c.notifyTask(t, "failed", err.Error())
+	go c.taskFinishedToChat(t)
 	t.logf("error", "%v", err)
 }
