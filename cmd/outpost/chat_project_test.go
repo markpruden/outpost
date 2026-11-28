@@ -563,3 +563,99 @@ func TestProjectChatCompatTaskStopClear(t *testing.T) {
 		t.Fatalf("clear %d", w.Code)
 	}
 }
+
+// POST /api/chats/{id}/task works on any conversation of a project, not only the first, and refuses a
+// plain chat, an empty message and a project without a usable planner (nothing is added then).
+func TestChatTaskEndpoint(t *testing.T) {
+	c := chatController(t)
+	c.tasks = map[string]*Task{}
+	p := testProjectIn(t, c, "proj_t", "t")
+	plain := &Chat{ID: "chat_plain", Title: "plain", Node: "auto", Messages: []ChatMsg{}, dir: c.chatsDir()}
+	conv := &Chat{ID: "chat_second", Title: "second", Node: "auto", ProjectID: p.ID, Messages: []ChatMsg{}, dir: c.chatsDir()}
+	c.chatMu.Lock()
+	c.chats[plain.ID], c.chats[conv.ID] = plain, conv
+	c.chatMu.Unlock()
+	call := func(id, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/x", strings.NewReader(body))
+		r.SetPathValue("id", id)
+		c.handleChatTask(w, r)
+		return w
+	}
+	if w := call("nope", `{"text":"x"}`); w.Code != 404 {
+		t.Fatalf("unknown chat %d", w.Code)
+	}
+	if w := call(plain.ID, `{"text":"x"}`); w.Code != 400 {
+		t.Fatalf("plain chat %d %s", w.Code, w.Body)
+	}
+	if w := call(conv.ID, `{"text":"  "}`); w.Code != 400 {
+		t.Fatalf("empty %d", w.Code)
+	}
+	// No planner is set up in the test controller, so the task is refused and the chat is untouched.
+	if w := call(conv.ID, `{"text":"build it"}`); w.Code == 200 {
+		t.Fatalf("task without a planner: %s", w.Body)
+	}
+	conv.mu.Lock()
+	n := len(conv.Messages)
+	conv.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("a refused task left %d messages", n)
+	}
+}
+
+// A fact remembered from a suggestion under a project conversation's answer is kept for that project,
+// not for everywhere, whichever of the project's conversations it is in.
+func TestMemorySuggestionInProjectConversation(t *testing.T) {
+	c := chatController(t)
+	p := testProjectIn(t, c, "proj_m", "m")
+	conv := &Chat{ID: "chat_second_m", Title: "second", Node: "auto", ProjectID: p.ID, dir: c.chatsDir(),
+		Messages: []ChatMsg{{ID: "a1", Role: "assistant", Text: "ok", Suggest: "Tests use pytest."}}}
+	c.chatMu.Lock()
+	c.chats[conv.ID] = conv
+	c.chatMu.Unlock()
+	w := httptest.NewRecorder()
+	c.handleMemorySuggestion(w, httptest.NewRequest("POST", "/api/memory/suggestion", strings.NewReader(`{"chat":"chat_second_m","msg":"a1","text":"Tests use pytest."}`)))
+	if w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if got := c.mem().forScope(p.ID); len(got) == 0 || got[len(got)-1] != "Tests use pytest." {
+		t.Fatalf("project memory %v", got)
+	}
+	for _, g := range c.mem().forScope("") {
+		if g == "Tests use pytest." {
+			t.Fatal("the fact went to everywhere")
+		}
+	}
+	conv.mu.Lock()
+	left := conv.Messages[0].Suggest
+	conv.mu.Unlock()
+	if left != "" {
+		t.Fatal("the card was not cleared")
+	}
+}
+
+// A task started from a conversation that does not exist yet needs a project and text, and a refused
+// task leaves no empty conversation behind.
+func TestNewChatTaskEndpoint(t *testing.T) {
+	c := chatController(t)
+	c.tasks = map[string]*Task{}
+	p := testProjectIn(t, c, "proj_nt", "nt")
+	call := func(body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		c.handleNewChatTask(w, httptest.NewRequest("POST", "/api/chats/task", strings.NewReader(body)))
+		return w
+	}
+	if w := call(`{"text":"x","project_id":"nope"}`); w.Code != 404 {
+		t.Fatalf("unknown project %d", w.Code)
+	}
+	if w := call(`{"text":" ","project_id":"` + p.ID + `"}`); w.Code != 400 {
+		t.Fatalf("empty %d", w.Code)
+	}
+	before := len(c.chatSummariesFor("all"))
+	if w := call(`{"text":"build it","project_id":"` + p.ID + `"}`); w.Code == 200 {
+		t.Fatalf("task without a planner: %s", w.Body)
+	}
+	if n := len(c.chatSummariesFor("all")); n != before {
+		t.Fatalf("a refused task left %d new chats", n-before)
+	}
+}

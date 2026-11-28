@@ -355,6 +355,9 @@ func (c *Controller) handleMemorySuggestion(w http.ResponseWriter, r *http.Reque
 			}
 		}
 		source = "from \"" + ch.Title + "\""
+		if ch.ProjectID != "" && req.Project == "" && c.getProject(ch.ProjectID) != nil {
+			req.Project = ch.ProjectID // a project conversation's fact is kept for that project
+		}
 		if found {
 			ch.saveLocked()
 		}

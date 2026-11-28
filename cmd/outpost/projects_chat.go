@@ -144,6 +144,8 @@ func (pc *projectChat) add(m ProjectChatMsg) {
 func (c *Controller) projectChatRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/projects/{id}/chat", c.auth(c.handleProjectChat))
 	mux.HandleFunc("POST /api/projects/{id}/chat/stop", c.auth(c.handleProjectChatStop))
+	mux.HandleFunc("POST /api/chats/{id}/task", c.auth(c.handleChatTask))
+	mux.HandleFunc("POST /api/chats/task", c.auth(c.handleNewChatTask))
 	mux.HandleFunc("DELETE /api/projects/{id}/chat", c.auth(c.handleProjectChatClear))
 	mux.HandleFunc("GET /api/projects/{id}/file", c.auth(c.handleProjectFile))
 	mux.HandleFunc("POST /api/projects/{id}/file", c.auth(c.handleProjectSaveFile))
@@ -209,17 +211,11 @@ func (c *Controller) handleProjectChat(w http.ResponseWriter, r *http.Request) {
 	}
 	ch := c.projectConvChat(p, true)
 	if req.Mode == "task" {
-		t, code, err := c.createTask(createReq{Prompt: text, Project: p.ID}, nil, createOpts{ChatID: ch.ID})
+		t, code, err := c.startChatTask(ch, p, text)
 		if err != nil {
 			writeJSON(w, code, map[string]string{"error": err.Error()})
 			return
 		}
-		ch.mu.Lock()
-		ch.Messages = append(ch.Messages, ChatMsg{ID: newID("m"), Role: "user", Text: text, At: time.Now(), Tasks: []string{t.ID}})
-		ch.Updated = time.Now()
-		ch.saveLocked()
-		ch.mu.Unlock()
-		taskLive.changed("chat_" + ch.ID)
 		writeJSON(w, 200, map[string]string{"task": t.ID})
 		return
 	}
@@ -228,6 +224,107 @@ func (c *Controller) handleProjectChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+// startChatTask starts a task in the project from text and records the message, with the task, in
+// the conversation ch (the "Task" choice of the project composer).
+func (c *Controller) startChatTask(ch *Chat, p *Project, text string) (*Task, int, error) {
+	t, code, err := c.createTask(createReq{Prompt: text, Project: p.ID}, nil, createOpts{ChatID: ch.ID})
+	if err != nil {
+		return nil, code, err
+	}
+	ch.mu.Lock()
+	ch.Messages = append(ch.Messages, ChatMsg{ID: newID("m"), Role: "user", Text: text, At: time.Now(), Tasks: []string{t.ID}})
+	ch.Updated = time.Now()
+	ch.saveLocked()
+	ch.mu.Unlock()
+	taskLive.changed("chat_" + ch.ID)
+	return t, 200, nil
+}
+
+// handleChatTask starts a task in the chat's project from the posted text: the same as the project
+// composer's Task choice, for any conversation of the project (not only the first).
+func (c *Controller) handleChatTask(w http.ResponseWriter, r *http.Request) {
+	ch := c.getChat(r.PathValue("id"))
+	if ch == nil {
+		writeJSON(w, 404, map[string]string{"error": "no such chat"})
+		return
+	}
+	ch.mu.Lock()
+	pid := ch.ProjectID
+	ch.mu.Unlock()
+	p := c.getProject(pid)
+	if p == nil {
+		writeJSON(w, 400, map[string]string{"error": "this chat is not in a project"})
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&req); err != nil {
+		writeJSON(w, 400, map[string]string{"error": "bad request"})
+		return
+	}
+	text := strings.TrimSpace(req.Text)
+	if text == "" {
+		writeJSON(w, 400, map[string]string{"error": "write a message"})
+		return
+	}
+	if len(text) > maxProjectChatChars {
+		writeJSON(w, 400, map[string]string{"error": fmt.Sprintf("the message is too long (over %d characters); attach big text to a task instead", maxProjectChatChars)})
+		return
+	}
+	t, code, err := c.startChatTask(ch, p, text)
+	if err != nil {
+		writeJSON(w, code, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]string{"task": t.ID})
+}
+
+// handleNewChatTask makes a new, empty conversation in a project and starts a task in it from the
+// posted text: the Task choice of the composer on a conversation that does not exist yet. A refused
+// task leaves no conversation behind.
+func (c *Controller) handleNewChatTask(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Text      string `json:"text"`
+		ProjectID string `json:"project_id"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&req); err != nil {
+		writeJSON(w, 400, map[string]string{"error": "bad request"})
+		return
+	}
+	p := c.getProject(req.ProjectID)
+	if p == nil {
+		writeJSON(w, 404, map[string]string{"error": "no such project"})
+		return
+	}
+	text := strings.TrimSpace(req.Text)
+	if text == "" {
+		writeJSON(w, 400, map[string]string{"error": "write a message"})
+		return
+	}
+	if len(text) > maxProjectChatChars {
+		writeJSON(w, 400, map[string]string{"error": fmt.Sprintf("the message is too long (over %d characters); attach big text to a task instead", maxProjectChatChars)})
+		return
+	}
+	now := time.Now()
+	ch := &Chat{ID: newID("chat"), Title: chatTitle(text), Node: chatPlanner, ProjectID: p.ID, Messages: []ChatMsg{}, Created: now, Updated: now, dir: c.chatsDir()}
+	c.chatMu.Lock()
+	if len(c.chats) >= maxChats {
+		c.chatMu.Unlock()
+		writeJSON(w, 400, map[string]string{"error": "too many chats; delete some first"})
+		return
+	}
+	c.chats[ch.ID] = ch
+	c.chatMu.Unlock()
+	t, code, err := c.startChatTask(ch, p, text)
+	if err != nil {
+		c.removeChat(ch.ID)
+		writeJSON(w, code, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]string{"task": t.ID, "chat": ch.ID})
 }
 
 func (c *Controller) handleProjectChatStop(w http.ResponseWriter, r *http.Request) {

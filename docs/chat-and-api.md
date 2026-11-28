@@ -10,8 +10,7 @@ Part of the [Outpost user guide](USER-GUIDE.md).
 need a task. A new chat opens with two cards, **Auto (local, strongest free node)** and **Research**;
 **Pick a specific model…** under them lists each loaded model with *Any free node* (the chat goes to whichever
 node that has it is free) and a chip per node. Click a card or chip, or use the model box under the
-message box. The message box stays docked at the bottom, and the **Chats** button opens a panel with your earlier
-chats (on a phone it is a full-screen list). Replies stream in and are shown as formatted text (headings, bold, lists, tables, links and code blocks with a Copy button; HTML in an answer is shown as text, never run; the same goes for planner messages in a task and in the project chat), thinking
+message box. The message box stays docked at the bottom, and your chats are listed in the **left sidebar** with the tasks (grouped by status or group, with the search box above them; on a phone they are in the drawer). Chats that belong to a project are not listed there but in that project's Threads pane. Replies stream in and are shown as formatted text (headings, bold, lists, tables, links and code blocks with a Copy button; HTML in an answer is shown as text, never run; the same goes for planner messages in a task and in the project chat), thinking
 models show their reasoning folded away, and each answer notes the node, model and speed. **Enter**
 sends and Shift+Enter adds a line (Settings → Appearance, or the key badge next to Send, switches to **Ctrl+Enter** sends; the choice is kept in this browser; on a phone Enter always adds a new line and the **Send** button sends; the model list shows just the chosen model with a **Change** link, and the page follows the on-screen keyboard), **Stop** ends a reply, and **Make this a task** copies the conversation into a new task. Chats are
 kept on the controller (`chats/`, up to 500); a long chat sends only the newest messages that fit the
@@ -147,19 +146,20 @@ code first.", added to the system prompt of every message in it (up to 4,000 cha
 strip at the top. Tick **Also use these for new chats** to make them the default; new chats then start
 with them (the setting is `chat_instructions`, kept with the other settings and in backups).
 
-**Search chats** at the top of the Chats panel filters by title as you type and finds chats whose
-messages contain every word (the same search as the sidebar's "Search tasks and chats").
-Drag the panel's left edge to make it wider or narrower (240 to 560 px; arrow keys work on the focused
-edge, double-click resets); the width is remembered in this browser.
+**Search chats**: the sidebar's "Search tasks and chats" box filters chats by title as you type and finds chats whose
+messages contain every word.
+
+**Moving a chat into a project.** A chat's **⋯** (its row in the sidebar, or the top of an open chat) has **Rename…**, **Move to project…** (pick a project; the chat then lives in its Threads pane and gets the project's planner, files and tools) and, inside a project, **Remove from project** (back to the sidebar) and **Move to another project…**. The chat keeps its messages, images and documents.
+
 
 **Chats in a project (API).** A chat can belong to a project: `POST /api/chats` takes `project_id`, and
 `POST /api/chats/{id}/meta` takes `project_id` to move a chat into a project (`""` takes it out). A project
 chat is answered by the same engine (node picker, Auto, cache reuse, images, Run code) with the project's
 instructions, memory and file tools added, and may start tasks and research. Its node choice can also be
 `planner`, which answers with the project's cloud planner; plain chats refuse that value. `GET /api/chats`
-lists chats that are in no project (what the Chat page shows); `?project=<id>` lists one project's
+lists chats that are in no project (what the sidebar shows); `?project=<id>` lists one project's
 conversations and `?project=all` every chat. The project's single conversation (`/api/projects/{id}/chat`)
-is kept as a chat of that project and the old endpoint works as before. On first start the conversation
+is kept as a chat of that project and the old endpoint works as before. `POST /api/chats/{id}/task` (`{"text"}`) starts a task in the chat's project from the text and records the message with its task; `POST /api/chats/task` (`{"text", "project_id"}`) does the same in a new conversation. On first start the conversation
 from earlier versions is copied into such a chat; the old file is left in place.
 
 **Live preview.** When an answer (in Chat or the project conversation) contains a whole HTML page, an SVG
