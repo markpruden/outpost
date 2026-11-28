@@ -120,7 +120,7 @@ func (c *Controller) writeDiagnostics(w io.Writer, opt diagOptions) error {
 			d.Online = true
 			online = append(online, id)
 		}
-		if t, ok := c.lastSeen[id]; ok {
+		if t, ok := c.lastSeenOfLocked(id); ok {
 			t := t
 			d.LastSeen = &t
 		}

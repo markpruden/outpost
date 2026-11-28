@@ -86,7 +86,7 @@ func (c *Controller) checkRowsInit() []*checkRow {
 			for _, s := range checkSteps {
 				row.Steps[s] = checkStep{State: "pending"}
 			}
-		} else if t, ok := c.lastSeen[id]; ok {
+		} else if t, ok := c.lastSeenOfLocked(id); ok {
 			row.Offline = "offline since " + t.Format("Jan 2 15:04")
 		} else {
 			row.Offline = "offline"
