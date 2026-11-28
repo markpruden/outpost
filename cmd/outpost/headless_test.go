@@ -158,9 +158,10 @@ func TestUnattendedNeedsSandbox(t *testing.T) {
 func TestUnattendedTimeLimit(t *testing.T) {
 	c := chatController(t)
 	old := time.Now().Add(-unattendedMaxRun - time.Minute)
-	long := &Task{ID: "u", Unattended: true, Status: "running", Created: old}
-	manual := &Task{ID: "m", Status: "running", Created: old}
-	recent := &Task{ID: "r", Unattended: true, Status: "running", Created: time.Now()}
+	dir := t.TempDir() // setStatus saves the task, so give each one a folder
+	long := &Task{ID: "u", dir: dir, Unattended: true, Status: "running", Created: old}
+	manual := &Task{ID: "m", dir: dir, Status: "running", Created: old}
+	recent := &Task{ID: "r", dir: dir, Unattended: true, Status: "running", Created: time.Now()}
 	c.tasks = map[string]*Task{"u": long, "m": manual, "r": recent}
 	c.stopOverlongUnattended(time.Now())
 	if long.Status != "failed" || manual.Status != "running" || recent.Status != "running" {
