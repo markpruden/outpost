@@ -148,18 +148,23 @@ function fbShowUpload(path) {
 }
 // Upload: each file goes with its folder path (webkitRelativePath) so a folder keeps its shape.
 async function fbUpload(files) {
-  if (!files.length || fbCtx.kind !== 'proj') return;
+  if (fbCtx.kind !== 'proj') return;
+  await pjArtUpload(fbCtx.id, files);
+}
+// Shared by the Upload buttons and by drag and drop onto the project pane or the Artifacts dialog.
+async function pjArtUpload(pid, files) {
+  if (!files.length) return;
   const fd = new FormData();
   let total = 0;
   for (const f of files) { fd.append('files', f, f.webkitRelativePath || f.name); total += f.size; }
   toast(`Uploading ${files.length} file${files.length === 1 ? '' : 's'} (${bytes(total)})…`, 60000);
   try {
-    const r = await fetch(`/api/projects/${encodeURIComponent(fbCtx.id)}/artifacts`, { method: 'POST', body: fd, credentials: 'same-origin' });
+    const r = await fetch(`/api/projects/${encodeURIComponent(pid)}/artifacts`, { method: 'POST', body: fd, credentials: 'same-origin' });
     const b = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(b.error || r.statusText);
     toast(`Uploaded ${b.saved.length} file${b.saved.length === 1 ? '' : 's'}`);
   } catch (e) { toast('Upload failed: ' + e.message, 5000); }
-  await renderProjArts();
+  if (fbCtx && fbCtx.kind === 'proj' && fbCtx.id === pid && !$('modal-files').classList.contains('hidden')) await renderProjArts();
   if (typeof pjFetch === 'function' && page === 'project') { await pjFetch(true); renderProjectPage(); }
 }
 $('fb-up-f').onclick = () => $('fb-up-files').click();
@@ -179,3 +184,53 @@ async function fbDelete(el) {
   else if (taskDetail) { taskDetail.artifacts = (taskDetail.artifacts || []).filter((a) => a.path !== p && !a.path.startsWith(p + '/')); renderFiles(taskDetail); pollTask(); }
   if (typeof pjFetch === 'function' && page === 'project') { await pjFetch(true); renderProjectPage(); }
 }
+
+// ---------- drag and drop upload ----------
+// Files (and whole folders) dropped on the project's Threads pane or the open Artifacts dialog
+// go to the project's uploads. A folder is walked with webkitGetAsEntry so it keeps its shape.
+async function dropFiles(dt) {
+  const entries = [...dt.items || []].map((i) => (i.kind === 'file' && i.webkitGetAsEntry ? i.webkitGetAsEntry() : null));
+  if (!entries.length || entries.some((e) => !e)) return [...dt.files || []];
+  const out = [];
+  const walk = async (en, dir) => {
+    if (en.isFile) {
+      const f = await new Promise((res, rej) => en.file(res, rej));
+      if (dir) Object.defineProperty(f, 'webkitRelativePath', { value: dir + f.name });
+      out.push(f);
+    } else if (en.isDirectory) {
+      const rd = en.createReader(), kids = [];
+      for (;;) { const b = await new Promise((res, rej) => rd.readEntries(res, rej)); if (!b.length) break; kids.push(...b); }
+      for (const k of kids) await walk(k, (dir || '') + en.name + '/');
+    }
+  };
+  for (const en of entries) await walk(en, '');
+  return out;
+}
+(function () {
+  const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types || []].includes('Files');
+  const zone = (e) => {
+    if (page !== 'project') return null;
+    const m = $('modal-files');
+    if (m && !m.classList.contains('hidden')) return fbCtx && fbCtx.kind === 'proj' && m.contains(e.target) ? m : null;
+    const p = $('pj-panel');
+    return p && p.contains(e.target) && !p.classList.contains('hidden') && typeof paneTask !== 'undefined' && !paneTask && pjTab === 'threads' ? p : null;
+  };
+  let cur = null;
+  const clear = () => { if (cur) cur.classList.remove('drop-on'); cur = null; };
+  document.addEventListener('dragover', (e) => {
+    if (!hasFiles(e)) return;
+    const z = zone(e);
+    if (!z) { clear(); return; }
+    e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+    if (cur !== z) { clear(); cur = z; z.classList.add('drop-on'); }
+  });
+  document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) clear(); });
+  document.addEventListener('drop', async (e) => {
+    if (!hasFiles(e)) return;
+    const z = zone(e);
+    clear();
+    if (!z) return;
+    e.preventDefault();
+    try { await pjArtUpload(pageArg, await dropFiles(e.dataTransfer)); } catch (x) { toast(x.message, 5000); }
+  });
+})();
