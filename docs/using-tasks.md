@@ -480,6 +480,12 @@ something in them is waiting on you; the pin is stored on the controller, so it 
   at a time; a run cut off by a controller restart is marked stopped. **Clear conversation** waits until
   it finishes. **Untested:** real local models choosing when to research, and research on the real
   cluster (tested on the e2e rig with a stub model).
+  **It keeps going.** When a task or a research run that the conversation started finishes, Outpost adds a
+  small note to the conversation ("Task finished", "Research finished") and the planner answers again with
+  what came out of it: it carries on with your original request, starting the next task if the step is clear
+  and asking you only if a real decision is left. At most 5 of these in a row without a message from you.
+  A task that only investigated (wrote no files) no longer says "no automated tests". **Untested:** real
+  models deciding well what comes next.
   With a paid planner every tool round is a separate call, so an answer that
   reads files costs a few times more. **Ask** (Enter; Shift+Enter adds a line) talks it over with the planner. **Start as task** skips the conversation and starts your message
   as a task at once; **More options…** opens the full new-task form with the project chosen. Tasks

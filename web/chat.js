@@ -209,6 +209,7 @@ function chatTryOn(m, busy) {
 }
 function chatBubble(m, i, last) {
   const busy = !!(chatCur && chatCur.busy);
+  if (m.role === 'user' && m.auto) return `<div class="pj-auto">${esc(m.auto)}</div>`;
   if (m.role === 'user') {
     if (chatEditing === m.id) {
       return `<div class="bubble-row"><div class="bubble-edit"><textarea id="chat-edit-text" rows="3" aria-label="Edit message">${esc(m.text)}</textarea>

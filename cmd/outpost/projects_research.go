@@ -75,6 +75,9 @@ func (c *Controller) beginProjectResearchLocked(ch *Chat, p *Project, question s
 		ch.saveLocked()
 		ch.mu.Unlock()
 		taskLive.changed("chat_" + ch.ID)
+		if msg.Error == "" && strings.TrimSpace(msg.Text) != "" {
+			c.researchFinishedToChat(ch.ID, question, msg.Saved)
+		}
 	}()
 }
 

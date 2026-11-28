@@ -41,12 +41,12 @@ var convCreateMu sync.Mutex // one conversation chat is made per project
 
 func chatFromProjectMsg(m ProjectChatMsg) ChatMsg {
 	return ChatMsg{ID: m.ID, Role: m.Role, Text: m.Text, At: m.Time, Tasks: m.Tasks, Node: m.Who, Error: m.Error, Cost: m.Cost,
-		Reads: m.Reads, Suggest: m.Suggest, Question: m.Question, Research: m.Research, Saved: m.Saved, Note: m.Note, Offer: m.Offer, research: m.research}
+		Reads: m.Reads, Suggest: m.Suggest, Question: m.Question, Research: m.Research, Saved: m.Saved, Note: m.Note, Offer: m.Offer, Auto: m.Auto, research: m.research}
 }
 
 func projectMsgFromChat(m ChatMsg) ProjectChatMsg {
 	return ProjectChatMsg{ID: m.ID, Role: m.Role, Text: m.Text, Time: m.At, Tasks: m.Tasks, Who: m.Node, Error: m.Error, Cost: m.Cost,
-		Reads: m.Reads, Suggest: m.Suggest, Question: m.Question, Research: m.Research, Saved: m.Saved, Note: m.Note, Offer: m.Offer, research: m.research}
+		Reads: m.Reads, Suggest: m.Suggest, Question: m.Question, Research: m.Research, Saved: m.Saved, Note: m.Note, Offer: m.Offer, Auto: m.Auto, research: m.research}
 }
 
 // convChatID is the id of the chat a project's old conversation is copied into. It is derived from
