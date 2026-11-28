@@ -139,7 +139,7 @@ func (c *Controller) stateView() map[string]any {
 		if nc, ok := c.conns[id]; ok {
 			v.Online, v.Addr = true, nc.addr
 		}
-		if t, ok := c.lastSeen[id]; ok {
+		if t, ok := c.lastSeenOfLocked(id); ok {
 			t := t
 			v.LastSeen = &t
 		}

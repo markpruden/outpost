@@ -118,6 +118,8 @@ func (c *Controller) handleNodeWS(w http.ResponseWriter, r *http.Request) {
 	c.conns[n.ID] = nc
 	c.lastSeen[n.ID] = time.Now()
 	n.LastAddr = nc.addr
+	seen := c.lastSeen[n.ID]
+	n.LastSeenAt = &seen
 	c.saveNodesLocked()
 	// Jobs the controller thinks are running but the node doesn't list are lost.
 	running := map[string]bool{}
@@ -151,6 +153,7 @@ func (c *Controller) handleNodeWS(w http.ResponseWriter, r *http.Request) {
 		c.mu.Lock()
 		if c.conns[n.ID] == nc {
 			delete(c.conns, n.ID)
+			c.saveLastSeenLocked(n.ID, 0)
 		}
 		planned := plannedRestartLocked(c.updates[n.ID], c.restarts[n.ID], websocket.CloseStatus(readErr), time.Now())
 		c.mu.Unlock()
@@ -308,6 +311,32 @@ func (c *Controller) finishJobLocked(j *JobRec, status string, e *ErrInfo) {
 	c.notifyWaiterLocked(j)
 }
 
+// lastSeenOfLocked is when the node was last connected: this run's value if it
+// has connected since the controller started, else the time saved in nodes.json.
+func (c *Controller) lastSeenOfLocked(id string) (time.Time, bool) {
+	if t, ok := c.lastSeen[id]; ok {
+		return t, true
+	}
+	if n := c.nodes[id]; n != nil && n.LastSeenAt != nil {
+		return *n.LastSeenAt, true
+	}
+	return time.Time{}, false
+}
+
+// saveLastSeenLocked writes the node's current last-seen time into its record
+// and saves nodes.json when it moved by at least minStep.
+func (c *Controller) saveLastSeenLocked(id string, minStep time.Duration) {
+	n, t := c.nodes[id], c.lastSeen[id]
+	if n == nil || t.IsZero() {
+		return
+	}
+	if n.LastSeenAt != nil && t.Sub(*n.LastSeenAt) < minStep {
+		return
+	}
+	n.LastSeenAt = &t
+	c.saveNodesLocked()
+}
+
 // offlineSweeper drops connections that stop heartbeating and marks their jobs lost after 60 s.
 func (c *Controller) offlineSweeper() {
 	for range time.Tick(5 * time.Second) {
@@ -326,6 +355,10 @@ func (c *Controller) sweepOnce(now time.Time) {
 			// long froze the web UI and every other node whenever one died.
 			go nc.conn.Close(websocket.StatusGoingAway, "heartbeat timeout")
 			delete(c.conns, id)
+			c.saveLastSeenLocked(id, 0)
+		} else {
+			// Keep the saved time fresh, so a controller crash or reboot loses at most a few minutes.
+			c.saveLastSeenLocked(id, 5*time.Minute)
 		}
 	}
 	for _, j := range c.jobs {
